@@ -42,9 +42,9 @@ toml = ["tomli>=2.0; python_version < '3.11'", "tomli-w>=1.0"]
 consync = "consync.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/naveenkb142/consync"
-Repository = "https://github.com/naveenkb142/consync"
-Issues = "https://github.com/naveenkb142/consync/issues"
+Homepage = "https://github.com/naveenkumarbaskaran/consync"
+Repository = "https://github.com/naveenkumarbaskaran/consync"
+Issues = "https://github.com/naveenkumarbaskaran/consync/issues"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

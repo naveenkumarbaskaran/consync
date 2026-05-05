@@ -121,4 +121,4 @@ consync/
 
 - Original prototype: `/Users/I572120/Documents/Area/WorkSpace/VScode/hw_constants/`
 - Package pattern reference: `github-repos/TokenShield/`
-- GitHub: `naveenkb142/consync`
+- GitHub: `naveenkumarbaskaran/consync`

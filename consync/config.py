@@ -167,7 +167,7 @@ def load_config(config_path: Path | str | None = None) -> ConsyncConfig:
 def generate_default_config() -> str:
     """Generate a default .consync.yaml template for `consync init`."""
     return """\
-# consync configuration — https://github.com/naveenkb142/consync
+# consync configuration — https://github.com/naveenkumarbaskaran/consync
 # Sync constants between spreadsheets and source code with full decimal precision.
 
 mappings:

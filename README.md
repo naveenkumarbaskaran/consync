@@ -158,7 +158,7 @@ mappings:
 | `consync init` | Create `.consync.yaml` in current directory |
 | `consync sync` | Sync all mappings |
 | `consync sync --dry-run` | Preview changes without writing |
-| `consync sync --force source` | Force source → target regardless of state |
+| `consync sync --from source` | Force source → target regardless of state |
 | `consync check` | Verify sync (exit 1 if out of sync) |
 | `consync watch` | Watch files and auto-sync on change |
 | `consync install-hook` | Install git pre-commit hook |
@@ -177,7 +177,7 @@ mappings:
 ## Development
 
 ```bash
-git clone https://github.com/naveenkb142/consync.git
+git clone https://github.com/naveenkumarbaskaran/consync.git
 cd consync
 pip install -e ".[dev]"
 pytest
