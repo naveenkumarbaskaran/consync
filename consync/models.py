@@ -21,6 +21,9 @@ class ConstantType(Enum):
     FLOAT = "float"
     INT = "int"
     STRING = "string"
+    ARRAY_INT = "array_int"
+    ARRAY_FLOAT = "array_float"
+    ARRAY_STRING = "array_string"
 
 
 @dataclass
@@ -29,16 +32,28 @@ class Constant:
 
     This is the universal data model — every parser produces these,
     every renderer consumes them.
+
+    Values can be scalars (int, float, str) or typed arrays (list[int],
+    list[float], list[str]) for array constants like lookup tables.
     """
 
     name: str
-    value: float | int | str
+    value: float | int | str | list[int] | list[float] | list[str]
     unit: str = ""
     description: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @property
     def type(self) -> ConstantType:
+        if isinstance(self.value, list):
+            if not self.value:
+                return ConstantType.ARRAY_INT  # empty defaults to int array
+            first = self.value[0]
+            if isinstance(first, int):
+                return ConstantType.ARRAY_INT
+            elif isinstance(first, float):
+                return ConstantType.ARRAY_FLOAT
+            return ConstantType.ARRAY_STRING
         if isinstance(self.value, int):
             return ConstantType.INT
         if isinstance(self.value, float):
@@ -47,7 +62,13 @@ class Constant:
 
     @property
     def is_numeric(self) -> bool:
+        if isinstance(self.value, list):
+            return self.type in (ConstantType.ARRAY_INT, ConstantType.ARRAY_FLOAT)
         return isinstance(self.value, (int, float))
+
+    @property
+    def is_array(self) -> bool:
+        return isinstance(self.value, list)
 
 
 @dataclass

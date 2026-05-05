@@ -29,8 +29,15 @@ def render_csv(
         writer = csv.writer(f, delimiter=delimiter)
         writer.writerow(["Name", "Value", "Unit", "Description"])
         for c in constants:
-            # Format value: keep ints as ints, format floats with precision
-            if isinstance(c.value, float):
+            # Format value: arrays use pipe separator, floats get precision
+            if isinstance(c.value, list):
+                if c.value and isinstance(c.value[0], float):
+                    from consync.precision import format_float
+                    precision = config.precision if config else 17
+                    val_str = "|".join(format_float(v, precision) for v in c.value)
+                else:
+                    val_str = "|".join(str(v) for v in c.value)
+            elif isinstance(c.value, float):
                 from consync.precision import format_float
                 precision = config.precision if config else 17
                 val_str = format_float(c.value, precision)

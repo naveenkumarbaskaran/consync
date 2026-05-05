@@ -4,6 +4,7 @@ Supports:
     - `const double` (default) or `#define` output style
     - `static const` for multi-TU safety
     - Typed integers: uint32_t / int32_t / uint16_t / int16_t / uint8_t / int8_t
+    - Array constants: static const int X[] = {1, 2, 3};
     - Configurable precision for doubles/floats
 
 Output examples:
@@ -11,6 +12,7 @@ Output examples:
     Style "const" (default):
         static const uint32_t R_PULLUP = 4706U;  /* Ohm | I2C pull-up */
         static const double   R_SENSE  = 1.9999999999910001;  /* Ohm | Sense R */
+        static const int THRESHOLDS[] = {50, 100, 150, 200, 250};  /* bar | Brake thresholds */
 
     Style "define":
         #define R_PULLUP  (4706U)   /* Ohm | I2C pull-up */
@@ -96,8 +98,15 @@ def render_c_header(
     names = [prefix + c.name for c in constants]
     name_width = max((len(n) for n in names), default=20) + 2
 
+    # Qualifier for const style
+    qualifier = "static const" if static else "const"
+
     # Include for stdint types
-    needs_stdint = typed_ints and any(isinstance(c.value, int) for c in constants)
+    needs_stdint = typed_ints and any(
+        isinstance(c.value, int) or
+        (isinstance(c.value, list) and c.value and isinstance(c.value[0], int))
+        for c in constants
+    )
 
     # Build header
     lines = [
@@ -122,6 +131,16 @@ def render_c_header(
         if config and config.uppercase_names:
             name = name.upper()
 
+        # Build comment
+        parts = [p for p in (c.unit, c.description) if p]
+        comment = f"  /* {' | '.join(parts)} */" if parts else ""
+
+        # === Array values ===
+        if isinstance(c.value, list):
+            _render_array_const(lines, c, name, qualifier, typed_ints, precision, comment)
+            continue
+
+        # === Scalar values ===
         # Format value and determine type
         if isinstance(c.value, int):
             c_type, suffix = _c_type_for_int(c.value, typed_ints)
@@ -131,19 +150,13 @@ def render_c_header(
             val_str = format_c_double(c.value, precision)
             suffix = ""
 
-        # Build comment
-        parts = [p for p in (c.unit, c.description) if p]
-        comment = f"  /* {' | '.join(parts)} */" if parts else ""
-
         # Emit line based on output style
         if output_style == "define":
             lines.append(f"#define {name:<{name_width}} ({val_str}){comment}")
         else:
-            qualifier = "static const" if static else "const"
-            type_width = max(len(c_type) for c2 in constants
-                            for c_type in [_c_type_for_int(c2.value, typed_ints)[0]
-                                           if isinstance(c2.value, int)
-                                           else _c_type_for_float(c2.value)])
+            type_width = max(len(_get_c_type(c2, typed_ints)) for c2 in constants
+                            if not isinstance(c2.value, list))  if any(
+                                not isinstance(c2.value, list) for c2 in constants) else len(c_type)
             lines.append(
                 f"{qualifier} {c_type:<{type_width}} {name:<{name_width}} = {val_str};{comment}"
             )
@@ -152,3 +165,58 @@ def render_c_header(
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _get_c_type(c: "Constant", typed_ints: bool) -> str:
+    """Get the C type string for a scalar constant."""
+    if isinstance(c.value, int):
+        return _c_type_for_int(c.value, typed_ints)[0]
+    return _c_type_for_float(c.value)
+
+
+def _render_array_const(
+    lines: list[str],
+    c: "Constant",
+    name: str,
+    qualifier: str,
+    typed_ints: bool,
+    precision: int,
+    comment: str,
+) -> None:
+    """Render an array constant as: static const int X[] = {1, 2, 3};"""
+    from consync.models import ConstantType
+
+    arr = c.value
+    if not arr:
+        return
+
+    first = arr[0]
+    if isinstance(first, int):
+        # Use typed ints based on max value in array
+        max_val = max(arr)
+        min_val = min(arr)
+        if min_val < 0:
+            c_type = _c_type_for_int(min_val, typed_ints)[0]
+            # Ensure type fits max too
+            if typed_ints:
+                c_type2 = _c_type_for_int(max_val, typed_ints)[0]
+                # Pick the wider signed type
+                if "64" in c_type or "64" in c_type2:
+                    c_type = "int64_t"
+                elif "32" in c_type or "32" in c_type2:
+                    c_type = "int32_t"
+                elif "16" in c_type or "16" in c_type2:
+                    c_type = "int16_t"
+        else:
+            c_type = _c_type_for_int(max_val, typed_ints)[0]
+        vals = ", ".join(str(v) for v in arr)
+    elif isinstance(first, float):
+        c_type = "double"
+        vals = ", ".join(format_c_double(v, precision) for v in arr)
+    else:
+        # String arrays → not directly supported in C, skip
+        return
+
+    lines.append(
+        f"{qualifier} {c_type} {name}[] = {{{vals}}};{comment}"
+    )

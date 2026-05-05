@@ -49,8 +49,23 @@ def render_python(
         if config and config.uppercase_names:
             name = name.upper()
 
+        # Build inline comment
+        parts = [p for p in (c.unit, c.description) if p]
+        comment = f"  # {' — '.join(parts)}" if parts else ""
+
         # Format value with type annotation
-        if isinstance(c.value, int):
+        if isinstance(c.value, list):
+            # Array → list[int] / list[float] / list[str]
+            if c.value and isinstance(c.value[0], int):
+                type_hint = "list[int]"
+                val_str = repr(c.value)
+            elif c.value and isinstance(c.value[0], float):
+                type_hint = "list[float]"
+                val_str = "[" + ", ".join(format_float(v, precision) for v in c.value) + "]"
+            else:
+                type_hint = "list[str]"
+                val_str = repr(c.value)
+        elif isinstance(c.value, int):
             type_hint = "int"
             val_str = str(c.value)
         elif isinstance(c.value, float):
@@ -59,10 +74,6 @@ def render_python(
         else:
             type_hint = "str"
             val_str = repr(c.value)
-
-        # Build inline comment
-        parts = [p for p in (c.unit, c.description) if p]
-        comment = f"  # {' — '.join(parts)}" if parts else ""
 
         decl = f"{name}: {type_hint}"
         lines.append(f"{decl:<{max_name + 8}} = {val_str}{comment}")

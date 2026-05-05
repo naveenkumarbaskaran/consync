@@ -53,17 +53,37 @@ def render_rust(
             lines.append(f"/// {' '.join(parts)}")
 
         # Type and value
-        if isinstance(c.value, int):
+        if isinstance(c.value, list):
+            # Array → pub const X: [i64; N] = [1, 2, 3];
+            if c.value and isinstance(c.value[0], int):
+                type_name = "i64"
+                vals = ", ".join(str(v) for v in c.value)
+            elif c.value and isinstance(c.value[0], float):
+                type_name = "f64"
+                formatted = []
+                for v in c.value:
+                    s = format_float(v, precision)
+                    if "." not in s and "e" not in s and "E" not in s:
+                        s += ".0"
+                    formatted.append(s)
+                vals = ", ".join(formatted)
+            else:
+                # String arrays — use &str
+                type_name = "&str"
+                vals = ", ".join(f'"{v}"' for v in c.value)
+            lines.append(f"pub const {name}: [{type_name}; {len(c.value)}] = [{vals}];")
+        elif isinstance(c.value, int):
             type_name = "i64"
             val_str = str(c.value)
+            lines.append(f"pub const {name}: {type_name} = {val_str};")
         else:
             type_name = "f64"
             val_str = format_float(c.value, precision)
             # Rust requires decimal point or scientific notation for f64 literals
             if "." not in val_str and "e" not in val_str and "E" not in val_str:
                 val_str += ".0"
+            lines.append(f"pub const {name}: {type_name} = {val_str};")
 
-        lines.append(f"pub const {name}: {type_name} = {val_str};")
         lines.append("")
 
     filepath.parent.mkdir(parents=True, exist_ok=True)

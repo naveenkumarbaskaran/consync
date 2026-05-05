@@ -91,6 +91,19 @@ def render_csharp(
         if config and config.uppercase_names:
             name = name.upper()
 
+        # XML doc comment
+        doc_parts = [p for p in (c.description, f"({c.unit})" if c.unit else "") if p]
+        if doc_parts:
+            doc = " ".join(doc_parts)
+            lines.append(f"        /// <summary>{doc}</summary>")
+
+        # === Array values ===
+        if isinstance(c.value, list):
+            _render_csharp_array(lines, c, name, typed_ints, precision)
+            lines.append("")
+            continue
+
+        # === Scalar values ===
         cs_type, suffix = _csharp_type(c.value, typed_ints)
 
         # Format value
@@ -100,12 +113,6 @@ def render_csharp(
             val_str = format_float(c.value, precision)
         else:
             val_str = f'"{c.value}"'
-
-        # XML doc comment
-        doc_parts = [p for p in (c.description, f"({c.unit})" if c.unit else "") if p]
-        if doc_parts:
-            doc = " ".join(doc_parts)
-            lines.append(f"        /// <summary>{doc}</summary>")
 
         lines.append(f"        public const {cs_type} {name} = {val_str};")
         lines.append("")
@@ -122,3 +129,46 @@ def render_csharp(
 
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _render_csharp_array(
+    lines: list[str],
+    c: "Constant",
+    name: str,
+    typed_ints: bool,
+    precision: int,
+) -> None:
+    """Render an array constant as: public static readonly int[] X = { 1, 2, 3 };"""
+    arr = c.value
+    if not arr:
+        return
+
+    first = arr[0]
+    if isinstance(first, int):
+        cs_type = "int"
+        if typed_ints:
+            max_val = max(arr)
+            min_val = min(arr)
+            if min_val < 0:
+                if min_val >= -2147483648 and max_val <= 2147483647:
+                    cs_type = "int"
+                else:
+                    cs_type = "long"
+            else:
+                if max_val <= 2147483647:
+                    cs_type = "int"
+                elif max_val <= 4294967295:
+                    cs_type = "uint"
+                else:
+                    cs_type = "ulong"
+        vals = ", ".join(str(v) for v in arr)
+    elif isinstance(first, float):
+        cs_type = "double"
+        vals = ", ".join(format_float(v, precision) for v in arr)
+    else:
+        cs_type = "string"
+        vals = ", ".join(f'"{v}"' for v in arr)
+
+    lines.append(
+        f"        public static readonly {cs_type}[] {name} = {{ {vals} }};"
+    )

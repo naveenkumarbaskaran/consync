@@ -9,3 +9,9 @@ build/
 *.xlsx
 !examples/**/*.xlsx
 .consync.state.json
+
+# consync runtime files
+.consync.log
+.consync.log.*
+.consync.audit.jsonl
+.consync.state.json

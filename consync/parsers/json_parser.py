@@ -59,10 +59,13 @@ def parse_json(filepath: str | Path, **kwargs) -> list[Constant]:
 
 
 def _parse_flat(data: dict) -> list[Constant]:
-    """Format A: {"NAME": value, ...}"""
+    """Format A: {"NAME": value, ...} — value can be scalar or array."""
     constants = []
     for name, value in data.items():
-        if isinstance(value, (int, float)):
+        if isinstance(value, list):
+            # Array constant — typed list of ints, floats, or strings
+            constants.append(Constant(name=name, value=_coerce_array(value)))
+        elif isinstance(value, (int, float)):
             constants.append(Constant(name=name, value=value))
         elif isinstance(value, str):
             try:
@@ -82,6 +85,9 @@ def _parse_array(data: list) -> list[Constant]:
         value = item.get("value")
         if not name or value is None:
             continue
+        # Support array values in Format B
+        if isinstance(value, list):
+            value = _coerce_array(value)
         constants.append(Constant(
             name=name,
             value=value,
@@ -100,6 +106,9 @@ def _parse_nested(data: dict) -> list[Constant]:
         value = props.get("value")
         if value is None:
             continue
+        # Support array values in Format C
+        if isinstance(value, list):
+            value = _coerce_array(value)
         constants.append(Constant(
             name=name,
             value=value,
@@ -107,3 +116,23 @@ def _parse_nested(data: dict) -> list[Constant]:
             description=str(props.get("description", props.get("desc", ""))),
         ))
     return constants
+
+
+def _coerce_array(arr: list) -> list[int] | list[float] | list[str]:
+    """Coerce a JSON array into a typed Python list.
+
+    Priority: int → float → str.
+    """
+    if not arr:
+        return []
+
+    # Check if all ints
+    if all(isinstance(x, int) for x in arr):
+        return arr
+
+    # Check if all numeric (mix of int/float → float)
+    if all(isinstance(x, (int, float)) for x in arr):
+        return [float(x) for x in arr]
+
+    # Fallback to strings
+    return [str(x) for x in arr]

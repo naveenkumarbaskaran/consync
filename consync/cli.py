@@ -8,6 +8,7 @@ Commands:
     consync check         CI mode — verify files are in sync (exit 1 if not)
     consync install-hook  Install git pre-commit hook
     consync status        Show current sync state
+    consync log           Show recent audit log entries
 """
 
 from __future__ import annotations
@@ -22,9 +23,16 @@ from consync import __version__
 
 @click.group()
 @click.version_option(__version__, prog_name="consync")
-def main():
+@click.option("-v", "--verbose", is_flag=True, help="Show INFO-level details.")
+@click.option("--debug", is_flag=True, help="Show DEBUG-level details (very verbose).")
+@click.pass_context
+def main(ctx, verbose: bool, debug: bool):
     """consync — Bidirectional sync between spreadsheets and source code constants."""
-    pass
+    from consync.logging_config import setup_logging
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
+    ctx.obj["debug"] = debug
+    setup_logging(verbose=verbose, debug=debug)
 
 
 @main.command()
@@ -172,6 +180,49 @@ def _result_icon(result) -> str:
         SyncResult.SKIPPED: "⏭️ ",
         SyncResult.ERROR: "❌",
     }.get(result, "?")
+
+
+@main.command(name="log")
+@click.option("-n", "--lines", default=20, help="Number of recent entries to show.")
+@click.option("--json", "as_json", is_flag=True, help="Output raw JSON lines.")
+def show_log(lines: int, as_json: bool):
+    """Show recent sync audit log entries.
+
+    Displays timestamp, user, direction, files, and synced values.
+    Reads from .consync.audit.jsonl in the current directory.
+    """
+    from consync.logging_config import read_audit_log
+
+    entries = read_audit_log(last_n=lines)
+    if not entries:
+        click.echo("No audit log entries found. Run 'consync sync' first.")
+        return
+
+    for entry in entries:
+        if as_json:
+            import json
+            click.echo(json.dumps(entry, ensure_ascii=False))
+            continue
+
+        ts = entry.get("timestamp", "?")
+        user = entry.get("user", "?")
+        direction = entry.get("direction", "?")
+        source = entry.get("source", "?")
+        target = entry.get("target", "?")
+        count = entry.get("count", 0)
+        dry = " [DRY RUN]" if entry.get("dry_run") else ""
+
+        click.echo(f"  {ts}  {user}  {direction}  {source} ↔ {target}  ({count} constants){dry}")
+
+        # Show constant values
+        constants = entry.get("constants", [])
+        for c in constants:
+            name = c.get("name", "?")
+            value = c.get("value", "?")
+            unit = c.get("unit", "")
+            unit_str = f" {unit}" if unit else ""
+            click.echo(f"    {name} = {value}{unit_str}")
+        click.echo("")
 
 
 if __name__ == "__main__":

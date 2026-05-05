@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
 from consync.config import load_config
+from consync.logging_config import write_audit_entry
 from consync.models import ConsyncConfig, MappingConfig, SyncDirection
 from consync.parsers import get_parser
 from consync.renderers import get_renderer
 from consync.state import SyncState, compute_hash
+
+logger = logging.getLogger(__name__)
 
 
 class SyncResult(Enum):
@@ -143,10 +147,33 @@ def _sync_one(
             constants = _parse_file(source_path, mapping.source_format)
             _render_file(constants, target_path, mapping.target_format, mapping)
             result = SyncResult.SYNCED_SOURCE_TO_TARGET
+            logger.info(
+                "Synced %s → %s (%d constants)",
+                mapping.source, mapping.target, len(constants),
+            )
         else:
             constants = _parse_file(target_path, mapping.target_format)
             _render_file(constants, source_path, mapping.source_format, mapping)
             result = SyncResult.SYNCED_TARGET_TO_SOURCE
+            logger.info(
+                "Synced %s → %s (%d constants)",
+                mapping.target, mapping.source, len(constants),
+            )
+
+        # Log individual constant values at DEBUG level
+        for c in constants:
+            logger.debug("  %s = %r%s", c.name, c.value, f" ({c.unit})" if c.unit else "")
+
+        # Write structured audit entry
+        write_audit_entry(
+            direction=result.value,
+            source=mapping.source,
+            target=mapping.target,
+            constants=constants,
+            result="synced",
+            dry_run=dry_run,
+            audit_file=config_dir / ".consync.audit.jsonl",
+        )
 
         # Update state with hashes of BOTH files after sync
         src_constants = _parse_file(source_path, mapping.source_format)
@@ -167,6 +194,7 @@ def _sync_one(
         )
 
     except Exception as e:
+        logger.error("Sync failed for %s ↔ %s: %s", mapping.source, mapping.target, e)
         return SyncReport(
             source=mapping.source, target=mapping.target,
             result=SyncResult.ERROR,
