@@ -22,6 +22,7 @@ EXTENSION_TO_FORMAT: dict[str, str] = {
     ".hpp": "c_header",
     ".hh": "c_header",
     ".c": "c_header",
+    ".cs": "csharp",
     ".py": "python",
     ".rs": "rust",
     ".v": "verilog",
@@ -112,6 +113,9 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
         module_name=raw.get("module_name", ""),
         prefix=raw.get("prefix", ""),
         uppercase_names=raw.get("uppercase_names", True),
+        output_style=raw.get("output_style", "const"),
+        static_const=raw.get("static_const", False),
+        typed_ints=raw.get("typed_ints", True),
     )
 
 

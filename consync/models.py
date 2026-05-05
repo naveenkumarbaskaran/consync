@@ -65,6 +65,10 @@ class MappingConfig:
     module_name: str = ""  # for Verilog/VHDL module scoping
     prefix: str = ""  # prefix added to all constant names
     uppercase_names: bool = True  # force UPPER_CASE names in output
+    # C/C++ specific options
+    output_style: str = "const"  # "const" | "define" — #define vs const declaration
+    static_const: bool = False  # emit "static const" to avoid linker duplicates
+    typed_ints: bool = True  # use uint32_t/int32_t instead of plain int/double for integers
 
 
 @dataclass

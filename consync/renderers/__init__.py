@@ -39,6 +39,7 @@ def list_renderers() -> list[str]:
 # Import all renderer modules to trigger registration
 from consync.renderers import (  # noqa: E402, F401
     c_header,
+    csharp,
     csv_renderer,
     python_const,
     rust_const,

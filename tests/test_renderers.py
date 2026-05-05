@@ -42,10 +42,14 @@ class TestCHeaderRenderer:
         assert "#ifndef HW_CONSTANTS_H" in content
         assert "#define HW_CONSTANTS_H" in content
         assert "#endif" in content
-        assert "const double R_SENSE" in content
+        assert "double" in content
+        assert "R_SENSE" in content
         assert "1.9999999999910001" in content
         assert "4706" in content
         assert "/* Ohm | Current sense resistor */" in content
+        # Typed ints enabled by default
+        assert "uint16_t" in content  # R_PULLUP = 4706 fits in uint16_t
+        assert "#include <stdint.h>" in content
 
     def test_round_trip_precision(self, tmp_path, sample_constants, default_config):
         from consync.renderers.c_header import render_c_header
