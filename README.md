@@ -8,7 +8,8 @@ Keep a single source of truth for hardware constants (resistor values, timing pa
   <img src="assets/demo.gif" alt="consync demo" width="720">
 </p>
 
-[![PyPI version](https://img.shields.io/pypi/v/consync.svg)](https://pypi.org/project/consync/)
+[![PyPI version](https://img.shields.io/pypi/v/consync)](https://pypi.org/project/consync/)
+[![npm version](https://img.shields.io/npm/v/consync)](https://www.npmjs.com/package/consync)
 [![CI](https://github.com/naveenkumarbaskaran/consync/actions/workflows/ci.yml/badge.svg)](https://github.com/naveenkumarbaskaran/consync/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

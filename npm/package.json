@@ -1,0 +1,48 @@
+{
+  "name": "@naveenkumarbaskaran/consync",
+  "version": "0.1.0",
+  "description": "Bidirectional sync between spreadsheets and source code constants — with full decimal precision",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "keywords": [
+    "constants",
+    "sync",
+    "embedded",
+    "firmware",
+    "hardware",
+    "precision",
+    "c-header",
+    "verilog",
+    "vhdl",
+    "excel",
+    "code-generation",
+    "bidirectional"
+  ],
+  "author": "Naveen Kumar Baskaran <naveenkb142@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/naveenkumarbaskaran/consync.git"
+  },
+  "homepage": "https://github.com/naveenkumarbaskaran/consync",
+  "bugs": {
+    "url": "https://github.com/naveenkumarbaskaran/consync/issues"
+  },
+  "bin": {
+    "consync": "./bin/consync.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "test": "node bin/consync.js --version"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "files": [
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ]
+}
