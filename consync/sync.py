@@ -7,12 +7,15 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from consync.backup import backup_file
 from consync.config import load_config
+from consync.lock import SyncLock, LockError
 from consync.logging_config import write_audit_entry
 from consync.models import ConsyncConfig, MappingConfig, SyncDirection
 from consync.parsers import get_parser
 from consync.renderers import get_renderer
 from consync.state import SyncState, compute_hash
+from consync.validators import parse_validators, validate_constants
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +60,19 @@ def sync(
     state = SyncState(config_dir / cfg.state_file)
 
     reports: list[SyncReport] = []
-    for mapping in cfg.mappings:
-        report = _sync_one(mapping, config_dir, state, cfg, force_direction, dry_run)
-        reports.append(report)
+
+    try:
+        with SyncLock(config_dir):
+            for mapping in cfg.mappings:
+                report = _sync_one(mapping, config_dir, state, cfg, force_direction, dry_run)
+                reports.append(report)
+    except LockError as e:
+        logger.error("Lock conflict: %s", e)
+        reports.append(SyncReport(
+            source="*", target="*",
+            result=SyncResult.ERROR,
+            message=str(e),
+        ))
 
     return reports
 
@@ -142,9 +155,19 @@ def _sync_one(
                 message=f"[DRY RUN] Would sync {result.value}",
             )
 
-        # Execute sync
+        # Execute sync (with backup before overwrite)
         if direction == "source":
             constants = _parse_file(source_path, mapping.source_format)
+            # Validate before writing
+            validation = _validate_if_needed(constants, mapping)
+            if validation and not validation.ok:
+                return SyncReport(
+                    source=mapping.source, target=mapping.target,
+                    result=SyncResult.ERROR,
+                    message=f"Validation failed: {validation.errors[0].message}"
+                    + (f" (+{len(validation.errors)-1} more)" if len(validation.errors) > 1 else ""),
+                )
+            backup_file(target_path, backup_dir=config_dir / ".consync" / "backups")
             _render_file(constants, target_path, mapping.target_format, mapping)
             result = SyncResult.SYNCED_SOURCE_TO_TARGET
             logger.info(
@@ -153,6 +176,16 @@ def _sync_one(
             )
         else:
             constants = _parse_file(target_path, mapping.target_format)
+            # Validate before writing
+            validation = _validate_if_needed(constants, mapping)
+            if validation and not validation.ok:
+                return SyncReport(
+                    source=mapping.source, target=mapping.target,
+                    result=SyncResult.ERROR,
+                    message=f"Validation failed: {validation.errors[0].message}"
+                    + (f" (+{len(validation.errors)-1} more)" if len(validation.errors) > 1 else ""),
+                )
+            backup_file(source_path, backup_dir=config_dir / ".consync" / "backups")
             _render_file(constants, source_path, mapping.source_format, mapping)
             result = SyncResult.SYNCED_TARGET_TO_SOURCE
             logger.info(
@@ -352,6 +385,18 @@ def _render_file(constants: list, filepath: Path, format_name: str, mapping: Map
 
     renderer = get_renderer(format_name)
     renderer(constants, filepath, config=mapping)
+
+
+def _validate_if_needed(constants: list, mapping: MappingConfig):
+    """Run validation hooks if configured. Returns ValidationResult or None."""
+    if not mapping.validators:
+        return None
+    rules = parse_validators(mapping.validators)
+    result = validate_constants(constants, rules)
+    if not result.ok:
+        for err in result.errors:
+            logger.warning("Validation error: %s", err.message)
+    return result
 
 
 def _write_xlsx(constants: list, filepath: Path, mapping: MappingConfig):

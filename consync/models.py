@@ -90,6 +90,8 @@ class MappingConfig:
     output_style: str = "const"  # "const" | "define" — #define vs const declaration
     static_const: bool = False  # emit "static const" to avoid linker duplicates
     typed_ints: bool = True  # use uint32_t/int32_t instead of plain int/double for integers
+    # Validation hooks
+    validators: dict = field(default_factory=dict)  # {name: {min:, max:, type:, pattern:, ...}}
 
 
 @dataclass

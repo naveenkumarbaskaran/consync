@@ -15,3 +15,5 @@ build/
 .consync.log.*
 .consync.audit.jsonl
 .consync.state.json
+.consync.lock
+.consync/

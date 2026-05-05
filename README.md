@@ -392,6 +392,118 @@ mappings:
 
 ---
 
+## Safety & Recovery
+
+consync is designed for safety-critical embedded systems. Every sync is protected by:
+
+### Automatic Backups
+
+Before every write, the previous version is saved to `.consync/backups/`:
+
+```
+.consync/backups/
+├── config.h.20260505_083012.bak
+├── config.h.20260505_091045.bak
+└── params.v.20260505_083012.bak
+```
+
+Retention: keeps last 20 backups per file (auto-trimmed).
+
+### Recovery
+
+Restore any file to a previous state:
+
+```bash
+# List all available snapshots
+consync recover --list
+
+# List snapshots for a specific file
+consync recover --file config.h --list
+
+# Restore most recent backup
+consync recover --file config.h --last
+
+# Restore to a specific timestamp
+consync recover --file config.h --at 2026-05-05T08:30:12
+```
+
+Recovery creates a safety backup of the *current* state before restoring, so you can always undo an undo.
+
+### Diff Preview
+
+See exactly what would change before committing:
+
+```bash
+consync diff
+```
+
+Shows a colorized unified diff for each mapping that would be modified. Pair with `--from source` or `--from target` to preview forced-direction syncs.
+
+### Validation Hooks
+
+Define value constraints in `.consync.yaml` to reject out-of-range values **before** they reach your firmware:
+
+```yaml
+mappings:
+  - source: calibration.xlsx
+    target: brake_params.h
+    direction: source_to_target
+    validators:
+      BRAKE_MAX_PRESSURE:
+        min: 0
+        max: 300
+      TIMEOUT_MS:
+        type: int
+        min: 100
+        max: 60000
+      DEVICE_NAME:
+        pattern: "^[A-Z]{3}-\\d{4}$"
+      LOOKUP_TABLE:
+        min_length: 4
+        max_length: 256
+        min: 0
+        max: 1023
+```
+
+Supported validator rules:
+
+| Rule | Applies to | Description |
+|------|-----------|-------------|
+| `min` / `max` | int, float, array elements | Numeric range (inclusive) |
+| `type` | all | Expected type: `int`, `float`, `string` |
+| `pattern` | string | Regex pattern (Python `re.match`) |
+| `min_length` / `max_length` | arrays, strings | Length bounds |
+| `not_empty` | all | Reject `""` or `[]` |
+
+If validation fails, sync is **blocked** and the error is reported:
+
+```
+❌ calibration.xlsx ↔ brake_params.h: Validation failed: BRAKE_MAX_PRESSURE = 999 exceeds maximum 300
+```
+
+### Concurrency Lock
+
+An advisory lock (`.consync.lock`) prevents concurrent writes:
+- Detects stale locks from crashed processes (PID check + timeout)
+- Auto-reclaims dead locks
+- Prevents file corruption from parallel `consync sync` + `consync watch`
+
+### Audit Log
+
+Every sync is logged with full values to `.consync.audit.jsonl`:
+
+```bash
+# Show recent syncs with values
+consync log
+
+# Show last 5 entries as raw JSON
+consync log -n 5 --json
+```
+
+Each entry records: timestamp, user, direction, files, all constant names+values — enabling full traceability for ISO 26262 / IEC 61508 compliance workflows.
+
+---
+
 ## CLI Reference
 
 | Command | Description |
@@ -403,8 +515,14 @@ mappings:
 | `consync sync --from target` | Force target → source (bootstrap) |
 | `consync check` | Verify sync (exit 1 if out of sync) |
 | `consync watch` | Watch files and auto-sync on change |
+| `consync diff` | Show unified diff of what would change |
+| `consync recover --list` | List available snapshots |
+| `consync recover --file X --last` | Restore most recent backup |
+| `consync log` | Show audit log with values |
 | `consync install-hook` | Install git pre-commit hook |
 | `consync status` | Show current sync state |
+| `-v` / `--verbose` | Show INFO-level details |
+| `--debug` | Show DEBUG-level details |
 
 ---
 
@@ -427,7 +545,7 @@ mappings:
 git clone https://github.com/naveenkumarbaskaran/consync.git
 cd consync
 pip install -e ".[dev]"
-pytest   # 94 tests
+pytest   # 151 tests
 ```
 
 ---

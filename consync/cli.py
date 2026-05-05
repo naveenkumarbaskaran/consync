@@ -225,5 +225,148 @@ def show_log(lines: int, as_json: bool):
         click.echo("")
 
 
+@main.command(name="recover")
+@click.option("--file", "filepath", default=None, help="File to recover (e.g., out.h).")
+@click.option("--at", "timestamp", default=None, help="ISO timestamp to restore to.")
+@click.option("--last", is_flag=True, help="Restore the most recent backup.")
+@click.option("--list", "list_only", is_flag=True, help="List available backups without restoring.")
+def recover_cmd(filepath: str | None, timestamp: str | None, last: bool, list_only: bool):
+    """Recover a file from a previous backup snapshot.
+
+    Before every sync, consync saves the previous version of the target file.
+    Use this command to list available snapshots or restore one.
+
+    Examples:
+        consync recover --list
+        consync recover --file config.h --list
+        consync recover --file config.h --last
+        consync recover --file config.h --at 2026-05-05T08:45:12
+    """
+    from consync.backup import list_backups, recover_file
+
+    project_dir = Path.cwd()
+
+    if list_only or (filepath is None and not last):
+        # List mode
+        file_path = Path(filepath) if filepath else None
+        backups = list_backups(filepath=file_path, project_dir=project_dir)
+
+        if not backups:
+            click.echo("No backups found. Backups are created automatically during sync.")
+            return
+
+        click.echo(f"Available backups ({len(backups)} snapshots):\n")
+        for b in backups:
+            size_kb = b["size"] / 1024
+            click.echo(f"  {b['timestamp']}  {b['file']:30s}  {size_kb:.1f} KB")
+        click.echo(f"\nRestore with: consync recover --file <name> --at <timestamp>")
+        return
+
+    if filepath is None:
+        click.echo("❌ Specify --file to recover (or use --list to see available backups).")
+        sys.exit(1)
+
+    file_path = Path(filepath)
+    result = recover_file(file_path, timestamp=timestamp, last=last, project_dir=project_dir)
+
+    if result:
+        click.echo(f"✅ Restored {filepath}")
+    else:
+        click.echo(f"❌ No backup found for {filepath}. Use --list to see available snapshots.")
+        sys.exit(1)
+
+
+@main.command(name="diff")
+@click.option("--config", "config_path", default=None, help="Path to .consync.yaml.")
+@click.option("--from", "from_side", type=click.Choice(["source", "target"]), default=None,
+              help="Force sync direction.")
+@click.option("--color/--no-color", default=True, help="Colorize diff output.")
+def diff_cmd(config_path: str | None, from_side: str | None, color: bool):
+    """Preview what would change on next sync (unified diff).
+
+    Shows a unified diff for each mapping that would be modified,
+    without actually writing any files. Like --dry-run but with full diff.
+    """
+    import difflib
+    import tempfile
+    from consync.config import load_config
+    from consync.sync import _config_dir, _resolve_path, _parse_file, _render_file, _determine_direction
+    from consync.state import SyncState, compute_hash
+
+    try:
+        cfg = load_config(config_path)
+    except FileNotFoundError as e:
+        click.echo(f"❌ {e}")
+        sys.exit(1)
+
+    config_dir = _config_dir(config_path)
+    state = SyncState(config_dir / cfg.state_file)
+    any_changes = False
+
+    for mapping in cfg.mappings:
+        source_path = _resolve_path(mapping.source, config_dir)
+        target_path = _resolve_path(mapping.target, config_dir)
+        key = state.mapping_key(mapping.source, mapping.target)
+
+        direction = _determine_direction(
+            mapping, source_path, target_path, state, key, cfg.on_conflict, from_side
+        )
+
+        if direction is None or direction == "conflict":
+            continue
+
+        # Determine what file would be written
+        if direction == "source":
+            constants = _parse_file(source_path, mapping.source_format)
+            dest_path = target_path
+        else:
+            constants = _parse_file(target_path, mapping.target_format)
+            dest_path = source_path
+
+        # Render to temp file to get the "new" content
+        with tempfile.NamedTemporaryFile(mode="w", suffix=dest_path.suffix, delete=False) as tmp:
+            tmp_path = Path(tmp.name)
+
+        try:
+            _render_file(constants, tmp_path, mapping.target_format if direction == "source" else mapping.source_format, mapping)
+            new_content = tmp_path.read_text().splitlines(keepends=True)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        # Get current content
+        if dest_path.exists():
+            old_content = dest_path.read_text().splitlines(keepends=True)
+        else:
+            old_content = []
+
+        # Generate unified diff
+        diff_lines = list(difflib.unified_diff(
+            old_content, new_content,
+            fromfile=f"a/{dest_path.name}",
+            tofile=f"b/{dest_path.name}",
+            lineterm="",
+        ))
+
+        if diff_lines:
+            any_changes = True
+            click.echo(f"--- {mapping.source} → {mapping.target} ---")
+            for line in diff_lines:
+                if color:
+                    if line.startswith("+") and not line.startswith("+++"):
+                        click.echo(click.style(line, fg="green"))
+                    elif line.startswith("-") and not line.startswith("---"):
+                        click.echo(click.style(line, fg="red"))
+                    elif line.startswith("@@"):
+                        click.echo(click.style(line, fg="cyan"))
+                    else:
+                        click.echo(line)
+                else:
+                    click.echo(line)
+            click.echo("")
+
+    if not any_changes:
+        click.echo("✔️  No changes — all mappings already in sync.")
+
+
 if __name__ == "__main__":
     main()
