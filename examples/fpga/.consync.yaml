@@ -1,0 +1,17 @@
+# FPGA Design Parameters Example
+#
+# Demonstrates: CSV → Verilog + VHDL simultaneous output
+# Run: cd examples/fpga && consync sync
+
+mappings:
+  - source: design_params.csv
+    target: design_params.v
+    direction: source_to_target
+    precision: 12
+    module_name: design_params
+
+  - source: design_params.csv
+    target: design_params.vhd
+    direction: source_to_target
+    precision: 12
+    module_name: design_params_pkg

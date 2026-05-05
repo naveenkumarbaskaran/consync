@@ -1,0 +1,8 @@
+Name,Value,Unit,Description
+R_SENSE,1.9999999999910001,Ohm,Current sense resistor
+R_PULLUP,4706,Ohm,I2C pull-up resistor
+C_FILTER,4.7832940e-07,F,Input filter capacitor
+FREQ_SWITCH,299872.93847293,Hz,Switching frequency
+V_REF,3.3,V,ADC reference voltage
+T_DEAD,1.5e-08,s,Dead time between switching transitions
+I_LIMIT_MAX,15.5,A,Maximum current limit

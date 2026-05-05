@@ -1,0 +1,11 @@
+Name,Value,Unit,Description
+CLK_FREQ,100000000,Hz,System clock frequency
+BAUD_RATE,115200,bps,UART baud rate
+ADC_BITS,12,,ADC resolution
+DAC_BITS,10,,DAC resolution
+FILTER_ALPHA,0.125,,IIR filter coefficient
+PWM_PERIOD,0.00001,s,PWM period (100kHz)
+GAIN_STAGE1,2.5,V/V,First amplifier gain
+GAIN_STAGE2,4.0,V/V,Second amplifier gain
+PI_KP,0.8,,Proportional gain
+PI_KI,0.02,,Integral gain

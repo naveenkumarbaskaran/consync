@@ -1,0 +1,11 @@
+# Hardware Constants Example
+#
+# Demonstrates: Excel/CSV → C header sync for an embedded project
+# Run: cd examples/hardware && consync sync
+
+mappings:
+  - source: constants.csv
+    target: hw_constants.h
+    direction: both
+    precision: 17
+    header_guard: HW_CONSTANTS_H

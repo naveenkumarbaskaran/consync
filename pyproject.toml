@@ -1,0 +1,54 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "consync"
+version = "0.1.0"
+description = "Bidirectional sync between spreadsheets and source code constants — with full decimal precision."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "Naveen Kumar Baskaran", email = "naveenkb142@gmail.com"}]
+keywords = [
+    "constants", "sync", "embedded", "firmware", "hardware",
+    "precision", "c-header", "verilog", "vhdl", "excel",
+    "code-generation", "bidirectional"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Code Generators",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+dependencies = [
+    "openpyxl>=3.1",
+    "pyyaml>=6.0",
+    "watchdog>=4.0",
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.4"]
+toml = ["tomli>=2.0; python_version < '3.11'", "tomli-w>=1.0"]
+
+[project.scripts]
+consync = "consync.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/naveenkb142/consync"
+Repository = "https://github.com/naveenkb142/consync"
+Issues = "https://github.com/naveenkb142/consync/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

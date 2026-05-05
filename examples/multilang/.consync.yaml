@@ -1,0 +1,21 @@
+# Multi-language Example
+#
+# Demonstrates: Single JSON source → C + Python + Rust
+# Run: cd examples/multilang && consync sync
+
+mappings:
+  - source: constants.json
+    target: constants.h
+    direction: source_to_target
+    precision: 17
+    header_guard: PHYSICS_CONSTANTS_H
+
+  - source: constants.json
+    target: constants.py
+    direction: source_to_target
+    precision: 17
+
+  - source: constants.json
+    target: constants.rs
+    direction: source_to_target
+    precision: 17

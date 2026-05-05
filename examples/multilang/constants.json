@@ -1,0 +1,7 @@
+[
+  {"name": "SPEED_OF_LIGHT", "value": 299792458, "unit": "m/s", "description": "Speed of light in vacuum"},
+  {"name": "PLANCK", "value": 6.62607015e-34, "unit": "J·s", "description": "Planck constant"},
+  {"name": "BOLTZMANN", "value": 1.380649e-23, "unit": "J/K", "description": "Boltzmann constant"},
+  {"name": "AVOGADRO", "value": 6.02214076e23, "unit": "1/mol", "description": "Avogadro number"},
+  {"name": "GRAVITY", "value": 9.80665, "unit": "m/s²", "description": "Standard gravity"}
+]

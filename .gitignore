@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+.coverage
+.sync_state.json
+*.xlsx
+!examples/**/*.xlsx
+.consync.state.json
