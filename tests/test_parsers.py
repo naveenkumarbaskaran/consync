@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from consync.models import Constant
 from consync.parsers.c_header import parse_c_header
 from consync.parsers.csv_parser import parse_csv
 from consync.parsers.json_parser import parse_json

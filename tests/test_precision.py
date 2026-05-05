@@ -1,6 +1,5 @@
 """Tests for precision formatting module."""
 
-import math
 
 from consync.precision import (
     format_float,

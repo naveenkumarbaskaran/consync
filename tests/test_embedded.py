@@ -1,10 +1,9 @@
 """Tests for embedded/ECU-specific features: #define, static const, typed ints, C#."""
 
-from pathlib import Path
 
 import pytest
 
-from consync.models import Constant, MappingConfig, SyncDirection
+from consync.models import Constant, MappingConfig
 
 
 @pytest.fixture

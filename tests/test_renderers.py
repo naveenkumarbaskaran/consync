@@ -1,7 +1,6 @@
 """Tests for renderers — C header, Python, Rust, Verilog, VHDL, JSON."""
 
 import json
-from pathlib import Path
 
 import pytest
 

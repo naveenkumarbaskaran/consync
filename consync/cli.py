@@ -48,8 +48,8 @@ def init(path: str):
 
     target.write_text(generate_default_config())
     click.echo(f"✅ Created {target}")
-    click.echo(f"   Edit it to configure your source ↔ target mappings.")
-    click.echo(f"   Then run: consync sync")
+    click.echo("   Edit it to configure your source ↔ target mappings.")
+    click.echo("   Then run: consync sync")
 
 
 @main.command(name="sync")
@@ -101,9 +101,9 @@ def check(config_path: str | None):
             all_ok = False
 
     if all_ok:
-        click.echo(f"\n✅ All mappings in sync.")
+        click.echo("\n✅ All mappings in sync.")
     else:
-        click.echo(f"\n❌ Out of sync! Run 'consync sync' to fix.")
+        click.echo("\n❌ Out of sync! Run 'consync sync' to fix.")
         sys.exit(1)
 
 
@@ -259,7 +259,7 @@ def recover_cmd(filepath: str | None, timestamp: str | None, last: bool, list_on
         for b in backups:
             size_kb = b["size"] / 1024
             click.echo(f"  {b['timestamp']}  {b['file']:30s}  {size_kb:.1f} KB")
-        click.echo(f"\nRestore with: consync recover --file <name> --at <timestamp>")
+        click.echo("\nRestore with: consync recover --file <name> --at <timestamp>")
         return
 
     if filepath is None:
@@ -291,7 +291,7 @@ def diff_cmd(config_path: str | None, from_side: str | None, color: bool):
     import tempfile
     from consync.config import load_config
     from consync.sync import _config_dir, _resolve_path, _parse_file, _render_file, _determine_direction
-    from consync.state import SyncState, compute_hash
+    from consync.state import SyncState
 
     try:
         cfg = load_config(config_path)

@@ -1,12 +1,10 @@
 """Tests for the sync engine and state management."""
 
-import json
 import textwrap
-from pathlib import Path
 
 import pytest
 
-from consync.models import Constant, MappingConfig, SyncDirection
+from consync.models import Constant
 from consync.state import SyncState, compute_hash
 from consync.sync import sync, check, SyncResult
 

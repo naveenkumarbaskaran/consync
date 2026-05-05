@@ -5,9 +5,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -412,7 +409,7 @@ class TestSyncWithBackup:
     def _write_config_and_source(self, tmp_path, source_content="Name,Value\nX,42\n"):
         """Helper: create a minimal consync project."""
         config = tmp_path / ".consync.yaml"
-        config.write_text(f"""\
+        config.write_text("""\
 mappings:
   - source: data.csv
     target: out.h

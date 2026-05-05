@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Callable
 
-from consync.models import Constant
+from consync.models import Constant as Constant  # re-export for type hints
 
 # Type for renderer functions: (constants, filepath, **kwargs) -> None
 RendererFunc = Callable[..., None]

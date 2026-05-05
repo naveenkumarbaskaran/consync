@@ -64,7 +64,7 @@ def start_watcher(
 
     click.echo(f"👁️  consync watcher started (debounce={debounce}s)")
     click.echo(f"   Watching {len(watch_files)} files in {len(watch_dirs)} directory(s)")
-    click.echo(f"   Press Ctrl+C to stop.\n")
+    click.echo("   Press Ctrl+C to stop.\n")
 
     for f in sorted(watch_files):
         click.echo(f"   • {f.relative_to(config_dir) if f.is_relative_to(config_dir) else f}")
