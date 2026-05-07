@@ -118,6 +118,12 @@ mappings:
     direction: both
     precision: 17
     header_guard: HW_CONSTANTS_H
+
+  # Or for C struct tables → Excel:
+  # - source: MotorParams.c
+  #   target: MotorParams.xlsx
+  #   direction: both
+  #   format: c_struct_table
 ```
 
 ### 2. Sync
@@ -194,7 +200,36 @@ consync install-hook
 
 **Don't have a spreadsheet yet?** consync can create one from your existing source files.
 
-If you already have a C header with constants and want to start tracking it:
+### C Struct Table → Excel (multi-variant motor parameters)
+
+Have a complex C file with `#if`/`#elif` struct arrays and want an Excel for your team to review/edit?
+
+```yaml
+# .consync.yaml
+mappings:
+  - source: RBPSC_HWVariantParameter.c    # Existing C file with struct arrays
+    target: RBPSC_HWVariantParameter.xlsx  # Excel will be created on first sync
+    direction: both                        # Edit C or Excel — both stay in sync
+    format: c_struct_table                 # Parses #if/#elif multi-variant tables
+    precision: 17
+```
+
+```bash
+consync sync
+# ✅ RBPSC_HWVariantParameter.c ↔ RBPSC_HWVariantParameter.xlsx: 160 constants synced (source → target)
+```
+
+consync parses the C file — handling nested `{{...}}` initializers, `#if`/`#elif` variant blocks, float suffixes (`1.0F`), hex (`0xFF`), expressions — and generates a multi-sheet Excel with one sheet per variant (BWA, EMB, DPB, etc.).
+
+After that, edit either side:
+- **Edit Excel** → values sync back into the C file (in-place, minimal diffs)
+- **Edit C file** → Excel updates on next `consync sync`
+
+> **Note:** The `format: c_struct_table` field tells consync to use the struct-table parser for the `.c` file instead of the default `c_header` parser. The `.xlsx` target format is auto-detected.
+
+### C Header → CSV/JSON (simple constants)
+
+If you have a simpler C header with `const`/`#define` declarations:
 
 ```yaml
 # .consync.yaml
@@ -211,7 +246,7 @@ consync sync
 
 consync parses the existing `.h` file, extracts all constants (name, value, unit, description from comments), and writes a fresh CSV. From that point forward, you have a spreadsheet to share with your EE team.
 
-**Works with any parseable target:** `.h`, `.json`, `.csv`, `.toml` — anything consync has a parser for can bootstrap a new source.
+**Works with any parseable format:** `.h`, `.c`, `.json`, `.csv`, `.toml` — anything consync has a parser for can bootstrap a new source.
 
 ---
 
@@ -376,16 +411,29 @@ consync tracks file hashes in `.consync.state.json` to detect which side changed
 ```yaml
 # .consync.yaml
 mappings:
-  - source: constants.xlsx        # source file path (xlsx/csv/json/toml/h)
-    target: hw_constants.h        # target file path (h/cs/py/rs/v/vhd/json/csv)
+  - source: constants.xlsx        # source file path (xlsx/csv/json/toml/h/c)
+    target: hw_constants.h        # target file path (h/cs/py/rs/v/vhd/json/csv/xlsx)
     direction: both               # source_to_target | target_to_source | both
     precision: 17                 # significant digits (1-17, default: 17)
+
+    # ─── Format override ───
+    # format: c_struct_table      # Override auto-detected format for the matching side.
+    #                             # Useful when .c needs c_struct_table instead of c_header.
+    #                             # Auto-assigned to whichever side's extension matches.
+    # source_format: xlsx         # Explicit source format (overrides auto-detect)
+    # target_format: c_header     # Explicit target format (overrides auto-detect)
 
     # ─── C Header options ───
     header_guard: HW_CONSTANTS_H  # #ifndef guard name
     output_style: const           # const (default) | define
     static_const: true            # adds 'static' keyword (default: false)
     typed_ints: true              # use stdint.h types (default: false)
+
+    # ─── C Struct Table options ───
+    # parser_options:
+    #   variant: DPB              # Select specific #elif variant (or "all")
+    #   table_var: PSC_HWVarParLUT  # Struct array variable name (auto-detected)
+    #   fields: [R_Phase, L_d, L_q, Psi, J, Imax, Tmax]  # Field names (auto-detected)
 
     # ─── C# options ───
     namespace: MyCompany.Firmware # C# namespace

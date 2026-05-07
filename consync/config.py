@@ -209,22 +209,30 @@ def generate_default_config() -> str:
 # Sync constants between spreadsheets and source code with full decimal precision.
 
 mappings:
+  # ─── Pattern 1: Spreadsheet → Code ───
+  # Excel is the source of truth, code is generated from it.
   - source: constants.xlsx          # Where constants are defined (spreadsheet)
     target: include/constants.h     # Generated code file
     direction: both                 # source_to_target | target_to_source | both
     precision: 17                   # Significant digits (17 = full IEEE 754 double)
     header_guard: HW_CONSTANTS_H   # C header include guard
 
+  # ─── Pattern 2: C struct table → Excel ───
+  # Existing C file with struct arrays — generate Excel for review/editing.
+  # - source: MotorParams.c           # Existing C file with struct array
+  #   target: MotorParams.xlsx        # Excel generated from C (created if missing)
+  #   direction: both                 # Edit either side, sync keeps them matched
+  #   format: c_struct_table          # Parser for #if/#elif struct arrays
+  #   precision: 17
+
+  # ─── Pattern 3: Code → Spreadsheet (bootstrap) ───
+  # - source: params.csv              # Will be created from your existing code
+  #   target: legacy/params.h         # Already exists
+  #   direction: target_to_source     # First sync creates the CSV from the .h
+
     # Optional:
     # prefix: ""                    # Prefix all constant names (e.g., "HW_")
     # uppercase_names: true         # Force UPPER_CASE names in output
-
-  # Add more mappings as needed:
-  # - source: parameters.xlsx
-  #   target: src/params.v
-  #   direction: source_to_target
-  #   precision: 12
-  #   module_name: design_params
 
 # Global settings:
 # state_file: .consync.state.json   # Track sync state (gitignore this)
