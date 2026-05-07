@@ -35,10 +35,11 @@ Keep a single source of truth for hardware constants (resistor values, timing pa
      │    Parsers      │  │   State     │  │   Renderers    │
      │                 │  │  Tracker    │  │                │
      │ • xlsx          │  │             │  │ • c_header     │
-     │ • csv           │  │ MD5 hashes  │  │ • csharp       │
-     │ • json          │  │ per-mapping │  │ • python       │
-     │ • toml          │  │ in .json    │  │ • rust         │
-     │ • c_header      │  │             │  │ • verilog      │
+     │ • csv           │  │ MD5 hashes  │  │ • c_struct_table│
+     │ • json          │  │ per-mapping │  │ • csharp       │
+     │ • toml          │  │ in .json    │  │ • python       │
+     │ • c_header      │  │             │  │ • rust         │
+     │ • c_struct_table │  │             │  │ • verilog      │
      └────────┬────────┘  └──────┬──────┘  │ • vhdl         │
               │                  │          │ • json          │
               │                  │          │ • csv           │
@@ -165,17 +166,19 @@ consync install-hook
 
 | Format | Extension | Notes |
 |--------|-----------|-------|
-| Excel | `.xlsx` | Auto-detects column headers |
+| Excel | `.xlsx` | Auto-detects flat or table layout (multi-variant) |
 | CSV | `.csv`, `.tsv` | Auto-detects delimiter |
-| JSON | `.json` | Flat, array, or nested |
+| JSON | `.json` | Flat, array, nested, or structured (`_meta` + `constants`) |
 | TOML | `.toml` | Flat or table-with-metadata |
 | C Header | `.h` | Parses `const`, `#define`, hex/int/float |
+| C Struct Table | `.c` | Multi-variant `#if`/`#elif` struct arrays (Bosch-style) |
 
 ### Targets (output)
 
 | Format | Extension | Features |
 |--------|-----------|----------|
 | C Header | `.h` | `const` or `#define`, `static`, `stdint.h` types, hex |
+| C Struct Table | `.c` | In-place update of multi-variant struct arrays (minimal diffs) |
 | C# | `.cs` | `namespace`, `public static class`, XML doc comments |
 | Python | `.py` | Type annotations (`float`/`int`), inline comments |
 | Rust | `.rs` | `pub const`, `f64`/`i64`, doc comments |
@@ -183,6 +186,7 @@ consync install-hook
 | VHDL | `.vhd` | Package with `ieee.math_real`, typed constants |
 | JSON | `.json` | Structured with `_meta` header |
 | CSV | `.csv` | Round-trip back to spreadsheet |
+| Excel | `.xlsx` | Multi-sheet table layout (one sheet per variant) |
 
 ---
 
@@ -546,7 +550,7 @@ Each entry records: timestamp, user, direction, files, all constant names+values
 git clone https://github.com/naveenkumarbaskaran/consync.git
 cd consync
 pip install -e ".[dev]"
-pytest   # 151 tests
+pytest   # 261 tests
 ```
 
 ---
