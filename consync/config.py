@@ -224,6 +224,10 @@ mappings:
   #   direction: both                 # Edit either side, sync keeps them matched
   #   format: c_struct_table          # Parser for #if/#elif struct arrays
   #   precision: 17
+  #   parser_options:
+  #     variant: all                  # Extract ALL #if/#elif variants (one sheet each)
+  #     # table_var: MyStructLUT      # Optional: struct array name (auto-detected)
+  #     # fields: [R_Phase, L_d, Psi] # Optional: field names (auto-detected from header comment)
 
   # ─── Pattern 3: Code → Spreadsheet (bootstrap) ───
   # - source: params.csv              # Will be created from your existing code
