@@ -108,6 +108,10 @@ def render_c_struct_table(
     Only updates literal numeric values that match by row label and field index.
     Expression values and non-matching fields are left unchanged.
 
+    When constants lack "raw" metadata (e.g., coming from Excel), the renderer
+    first parses the existing C file to get current raw values, then uses those
+    for pattern-based replacement — only updating values that actually changed.
+
     Args:
         constants: List of Constant objects (as produced by the parser).
         filepath: Path to the existing .c/.h file to update in place.
@@ -120,8 +124,8 @@ def render_c_struct_table(
             f"This renderer only updates existing files in-place."
         )
 
-    # Build a lookup: (sanitized_label, field_index) → Constant
-    updates: dict[tuple[str, int], Constant] = {}
+    # Build a lookup: (variant, sanitized_label, field_index) → Constant
+    updates: dict[tuple[str, str, int], Constant] = {}
     for c in constants:
         meta = c.metadata
         if not meta:
@@ -130,26 +134,48 @@ def render_c_struct_table(
             continue  # Don't try to update expressions
         label = meta.get("row_label", "")
         field_idx = meta.get("field_index")
+        variant = meta.get("variant", "")
         if label is not None and field_idx is not None:
-            key = (_sanitize_label(label), field_idx)
+            key = (variant, _sanitize_label(label), field_idx)
             updates[key] = c
 
     if not updates:
         return  # Nothing to update
 
+    # If constants lack "raw" metadata, enrich them from the existing file
+    has_raw = any(c.metadata.get("raw") for c in updates.values())
+    if not has_raw:
+        updates = _enrich_with_raw(updates, filepath, config)
+
+    if not updates:
+        return
+
     text = filepath.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     result_lines: list[str] = []
 
+    # Track current variant section as we scan lines
+    current_variant = ""
+    # Detect variant from #if/#elif lines using the same logic as the parser
+    variant_re = re.compile(r"#(?:if|elif)\s*\(.*?==\s*\w+?_(\w+)\s*\)")
+
     for line in lines:
+        # Track variant sections
+        variant_match = variant_re.search(line)
+        if variant_match:
+            current_variant = variant_match.group(1)
+
         # Check if this line has a row label and struct data
         label_match = _ROW_LABEL_RE.search(line)
         if label_match and ("{{" in line or ("{" in line and "}" in line)):
             label = label_match.group(1).strip()
             sanitized = _sanitize_label(label)
 
-            # Check if we have any updates for this row
-            row_updates = {idx: c for (lbl, idx), c in updates.items() if lbl == sanitized}
+            # Check if we have any updates for this row in the current variant
+            row_updates = {
+                idx: c for (v, lbl, idx), c in updates.items()
+                if lbl == sanitized and (v == current_variant or v == "")
+            }
             if row_updates:
                 line = _update_row_values(line, row_updates)
 
@@ -158,10 +184,91 @@ def render_c_struct_table(
     filepath.write_text("".join(result_lines), encoding="utf-8")
 
 
+def _enrich_with_raw(
+    updates: dict[tuple[str, str, int], Constant],
+    filepath: Path,
+    config=None,
+) -> dict[tuple[str, str, int], Constant]:
+    """Enrich update constants with 'raw' metadata from the existing C file.
+
+    Parses the current C file to get raw values, then only keeps updates
+    where the new value actually differs from the current value.
+    Returns a filtered dict with raw metadata populated.
+    """
+    from consync.parsers.c_struct_table import parse_c_struct_table
+
+    # Parse the file with parser options from config if available
+    parser_opts = {}
+    if config and hasattr(config, "parser_options"):
+        parser_opts = config.parser_options or {}
+
+    try:
+        current_constants = parse_c_struct_table(filepath, **parser_opts)
+    except Exception:
+        return {}  # Can't parse — skip updates
+
+    # Build lookup of current state: (variant, sanitized_label, field_index) → Constant
+    current_map: dict[tuple[str, str, int], Constant] = {}
+    for c in current_constants:
+        meta = c.metadata
+        if not meta:
+            continue
+        label = meta.get("row_label", "")
+        field_idx = meta.get("field_index")
+        variant = meta.get("variant", "")
+        if label is not None and field_idx is not None:
+            key = (variant, _sanitize_label(label), field_idx)
+            current_map[key] = c
+
+    # Filter: only keep updates where value actually changed
+    # Enrich with raw metadata from current file
+    enriched: dict[tuple[str, str, int], Constant] = {}
+    for key, new_const in updates.items():
+        current = current_map.get(key)
+        if current is None:
+            continue  # Not found in current file, skip
+
+        raw = current.metadata.get("raw", "")
+        if not raw:
+            continue  # No raw value to match against
+
+        # Check if value actually changed
+        if _values_equal(new_const.value, current.value):
+            continue  # Same value, no update needed
+
+        # Create enriched constant with raw metadata
+        enriched_meta = dict(new_const.metadata)
+        enriched_meta["raw"] = raw
+        enriched_const = Constant(
+            name=new_const.name,
+            value=new_const.value,
+            unit=new_const.unit,
+            description=new_const.description,
+            metadata=enriched_meta,
+        )
+        enriched[key] = enriched_const
+
+    return enriched
+
+
+def _values_equal(a, b) -> bool:
+    """Compare two values with tolerance for floating point."""
+    if isinstance(a, float) and isinstance(b, float):
+        if a == 0.0 and b == 0.0:
+            return True
+        if a == 0.0 or b == 0.0:
+            return abs(a - b) < 1e-15
+        return abs(a - b) / max(abs(a), abs(b)) < 1e-9
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return float(a) == float(b)
+    return a == b
+
+
 def _update_row_values(line: str, row_updates: dict[int, Constant]) -> str:
     """Update specific field values in a struct initializer row.
 
-    Finds the Nth numeric literal in the brace content and replaces it.
+    Uses raw-pattern matching: finds the original literal text in the line
+    and replaces with the new formatted value.
     """
     # Find where the data starts (first {{ after the label comment)
     brace_start = line.find("{{")
@@ -173,35 +280,14 @@ def _update_row_values(line: str, row_updates: dict[int, Constant]) -> str:
     prefix = line[:brace_start]
     data_part = line[brace_start:]
 
-    # Walk through data_part, finding all tokens (numeric literals + expressions)
-    # and tracking field indices
-    field_idx = 0
-    result = ""
-    i = 0
-    brace_depth = 0
-    in_value = False
-    current_value_start = -1
-
-    # We need a smarter approach: tokenize by commas at the correct brace depth
-    # But for replacement, we iterate through and find numeric literals at each position
-
-    # Strategy: find all numeric literal positions in the data portion,
-    # tracking which field index they correspond to
-    # This is approximate — we count comma-separated values at depth 1 or 2
-
-    # Alternative simpler approach: find and replace by matching the original raw value
     for field_idx, const in row_updates.items():
         raw_original = const.metadata.get("raw", "")
         if not raw_original or not isinstance(const.value, (int, float)):
             continue
 
-        # Build a regex pattern that matches the original value (with possible whitespace)
         escaped = re.escape(raw_original)
-        # Allow flexible whitespace around it
         pattern = re.compile(r"(?<![a-zA-Z0-9_.])" + escaped + r"(?![a-zA-Z0-9_.])")
-
         new_value = _format_numeric(const.value, raw_original)
-        # Replace only the first occurrence in the data part
         data_part, count = pattern.subn(new_value, data_part, count=1)
 
     return prefix + data_part

@@ -49,6 +49,10 @@ def parse_json(filepath: str | Path, **kwargs) -> list[Constant]:
 
     # Format A or C: object
     if isinstance(data, dict):
+        # Format D: consync renderer output {"_meta": {...}, "constants": [...]}
+        if "constants" in data and isinstance(data["constants"], list):
+            return _parse_array(data["constants"])
+
         # Check first value to distinguish A vs C
         first_val = next(iter(data.values()), None) if data else None
         if isinstance(first_val, dict):
