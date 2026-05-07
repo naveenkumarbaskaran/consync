@@ -132,6 +132,14 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
 
     direction = _parse_direction(raw.get("direction", "source_to_target"))
 
+    # Normalize parser_options — handle None (empty YAML value) and promote
+    # common parser keys (variant, table_var, fields) from mapping level
+    parser_options = raw.get("parser_options") or {}
+    _PROMOTABLE_PARSER_KEYS = ("variant", "table_var", "fields")
+    for key in _PROMOTABLE_PARSER_KEYS:
+        if key not in parser_options and key in raw:
+            parser_options[key] = raw[key]
+
     return MappingConfig(
         source=source,
         target=target,
@@ -147,9 +155,9 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
         output_style=raw.get("output_style", "const"),
         static_const=raw.get("static_const", False),
         typed_ints=raw.get("typed_ints", True),
-        parser_options=raw.get("parser_options", {}),
-        renderer_options=raw.get("renderer_options", {}),
-        validators=raw.get("validators", {}),
+        parser_options=parser_options,
+        renderer_options=raw.get("renderer_options") or {},
+        validators=raw.get("validators") or {},
     )
 
 
@@ -223,11 +231,11 @@ mappings:
   #   target: MotorParams.xlsx        # Excel generated from C (created if missing)
   #   direction: both                 # Edit either side, sync keeps them matched
   #   format: c_struct_table          # Parser for #if/#elif struct arrays
-  #   precision: 17
-  #   parser_options:
-  #     variant: all                  # Extract ALL #if/#elif variants (one sheet each)
-  #     # table_var: MyStructLUT      # Optional: struct array name (auto-detected)
-  #     # fields: [R_Phase, L_d, Psi] # Optional: field names (auto-detected from header comment)
+  #   variant: all                    # Extract ALL #if/#elif variants (one sheet each)
+  #   # table_var: MyStructLUT        # Optional: struct array name (auto-detected)
+  #   # fields: [R_Phase, L_d, Psi]   # Optional: field names (auto-detected)
+  #   # parser_options:               # Alternative: nest parser keys here
+  #   #   variant: all
 
   # ─── Pattern 3: Code → Spreadsheet (bootstrap) ───
   # - source: params.csv              # Will be created from your existing code
