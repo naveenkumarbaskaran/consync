@@ -80,6 +80,26 @@ def _parse_direction(raw: str) -> SyncDirection:
     return mapping[normalized]
 
 
+def _format_matches_extension(format_name: str, filepath: str) -> bool:
+    """Check if a format name is compatible with a file's extension."""
+    ext = Path(filepath).suffix.lower()
+    # Map format names to compatible extensions
+    FORMAT_COMPATIBLE_EXTENSIONS: dict[str, set[str]] = {
+        "c_header": {".c", ".h", ".hpp", ".hh"},
+        "c_struct_table": {".c", ".h", ".hpp", ".hh"},
+        "xlsx": {".xlsx", ".xls"},
+        "csv": {".csv"},
+        "json": {".json"},
+        "verilog": {".v", ".sv"},
+        "vhdl": {".vhd", ".vhdl"},
+        "python": {".py"},
+        "rust": {".rs"},
+        "csharp": {".cs"},
+    }
+    compatible = FORMAT_COMPATIBLE_EXTENSIONS.get(format_name, set())
+    return ext in compatible
+
+
 def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
     """Parse a single mapping entry from YAML."""
     source = raw.get("source", "")
@@ -90,8 +110,19 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
     if not target:
         raise ValueError("Each mapping must have a 'target' field.")
 
+    generic_format = raw.get("format", "")
     source_format = raw.get("source_format", "") or raw.get("format_source", "")
-    target_format = raw.get("target_format", "") or raw.get("format_target", "") or raw.get("format", "")
+    target_format = raw.get("target_format", "") or raw.get("format_target", "")
+
+    # If generic 'format' is specified, assign it to the side whose extension matches
+    if generic_format:
+        if not source_format and _format_matches_extension(generic_format, source):
+            source_format = generic_format
+        elif not target_format and _format_matches_extension(generic_format, target):
+            target_format = generic_format
+        elif not target_format:
+            # Legacy fallback: assign to target_format (backward compat)
+            target_format = generic_format
 
     # Auto-detect formats if not specified
     if not source_format:
