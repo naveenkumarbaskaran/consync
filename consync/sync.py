@@ -6,6 +6,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 from consync.backup import backup_file
 from consync.config import load_config
@@ -157,7 +158,7 @@ def _sync_one(
 
         # Execute sync (with backup before overwrite)
         if direction == "source":
-            constants = _parse_file(source_path, mapping.source_format)
+            constants = _parse_file(source_path, mapping.source_format, mapping.parser_options)
             # Validate before writing
             validation = _validate_if_needed(constants, mapping)
             if validation and not validation.ok:
@@ -175,7 +176,7 @@ def _sync_one(
                 mapping.source, mapping.target, len(constants),
             )
         else:
-            constants = _parse_file(target_path, mapping.target_format)
+            constants = _parse_file(target_path, mapping.target_format, mapping.parser_options)
             # Validate before writing
             validation = _validate_if_needed(constants, mapping)
             if validation and not validation.ok:
@@ -209,11 +210,11 @@ def _sync_one(
         )
 
         # Update state with hashes of BOTH files after sync
-        src_constants = _parse_file(source_path, mapping.source_format)
+        src_constants = _parse_file(source_path, mapping.source_format, mapping.parser_options)
         src_hash = compute_hash(src_constants)
         # For target formats without a parser, use source hash (they're equivalent after sync)
         try:
-            tgt_constants = _parse_file(target_path, mapping.target_format)
+            tgt_constants = _parse_file(target_path, mapping.target_format, mapping.parser_options)
             tgt_hash = compute_hash(tgt_constants)
         except (ValueError, FileNotFoundError):
             tgt_hash = src_hash
@@ -254,8 +255,8 @@ def _check_one(mapping: MappingConfig, config_dir: Path) -> SyncReport:
                 message=f"Target file not found: {target_path}",
             )
 
-        src_constants = _parse_file(source_path, mapping.source_format)
-        tgt_constants = _parse_file(target_path, mapping.target_format)
+        src_constants = _parse_file(source_path, mapping.source_format, mapping.parser_options)
+        tgt_constants = _parse_file(target_path, mapping.target_format, mapping.parser_options)
 
         src_hash = compute_hash(src_constants)
         tgt_hash = compute_hash(tgt_constants)
@@ -310,7 +311,7 @@ def _determine_direction(
         if not target_path.exists():
             return "source"
         # Check if source changed since last sync (use state hash)
-        src_constants = _parse_file(source_path, mapping.source_format)
+        src_constants = _parse_file(source_path, mapping.source_format, mapping.parser_options)
         src_hash = compute_hash(src_constants)
         last_src_hash = state.get_hash(key, "source") if state else None
         if last_src_hash and src_hash == last_src_hash:
@@ -322,7 +323,7 @@ def _determine_direction(
             return "target"
         # Check if target changed since last sync
         try:
-            tgt_constants = _parse_file(target_path, mapping.target_format)
+            tgt_constants = _parse_file(target_path, mapping.target_format, mapping.parser_options)
             tgt_hash = compute_hash(tgt_constants)
             last_tgt_hash = state.get_hash(key, "target") if state else None
             if last_tgt_hash and tgt_hash == last_tgt_hash:
@@ -337,8 +338,8 @@ def _determine_direction(
     if not target_path.exists():
         return "source"
 
-    src_constants = _parse_file(source_path, mapping.source_format)
-    tgt_constants = _parse_file(target_path, mapping.target_format)
+    src_constants = _parse_file(source_path, mapping.source_format, mapping.parser_options)
+    tgt_constants = _parse_file(target_path, mapping.target_format, mapping.parser_options)
     cur_src = compute_hash(src_constants)
     cur_tgt = compute_hash(tgt_constants)
 
@@ -370,10 +371,11 @@ def _determine_direction(
         return "conflict"
 
 
-def _parse_file(filepath: Path, format_name: str) -> list:
+def _parse_file(filepath: Path, format_name: str, parser_options: dict | None = None) -> list:
     """Parse a file using the appropriate parser."""
     parser = get_parser(format_name)
-    return parser(filepath)
+    opts = parser_options or {}
+    return parser(filepath, **opts)
 
 
 def _render_file(constants: list, filepath: Path, format_name: str, mapping: MappingConfig):
@@ -400,7 +402,176 @@ def _validate_if_needed(constants: list, mapping: MappingConfig):
 
 
 def _write_xlsx(constants: list, filepath: Path, mapping: MappingConfig):
-    """Write constants back to an Excel file."""
+    """Write constants back to an Excel file.
+
+    If constants come from a table parser (have row_label + field metadata),
+    writes in TABLE layout: rows = variants, columns = fields.
+    Otherwise falls back to the flat Name/Value/Unit/Description layout.
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+
+    # Detect if data came from a table parser (c_struct_table)
+    is_table = (
+        constants
+        and constants[0].metadata.get("row_label") is not None
+        and constants[0].metadata.get("field") is not None
+    )
+
+    if is_table:
+        _write_xlsx_table(constants, filepath, mapping)
+    else:
+        _write_xlsx_flat(constants, filepath, mapping)
+
+
+def _write_xlsx_table(constants: list, filepath: Path, mapping: MappingConfig):
+    """Write constants as a proper table: rows = motor variants, columns = fields.
+
+    If constants have different metadata['variant'] values, creates one sheet per variant.
+    Otherwise creates a single sheet.
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from collections import OrderedDict
+
+    # Group constants by variant
+    variants_map: OrderedDict[str, list] = OrderedDict()
+    for c in constants:
+        v = c.metadata.get("variant", "_default")
+        if v not in variants_map:
+            variants_map[v] = []
+        variants_map[v].append(c)
+
+    wb = openpyxl.Workbook()
+    # Remove default sheet — we'll create named ones
+    wb.remove(wb.active)
+
+    for variant_name, variant_constants in variants_map.items():
+        sheet_name = variant_name if variant_name != "_default" else "Parameters"
+        # Excel sheet name max 31 chars
+        sheet_name = sheet_name[:31]
+        ws = wb.create_sheet(title=sheet_name)
+        _write_table_sheet(ws, variant_constants, mapping)
+
+    # Add Info sheet
+    ws_info = wb.create_sheet("Info")
+    variant_cfg = mapping.parser_options.get("variant", "")
+    table_var = mapping.parser_options.get("table_var", "(auto-detected)")
+    ws_info.append(["Source File", mapping.source])
+    ws_info.append(["Struct Array", table_var])
+    ws_info.append(["Variants", ", ".join(variants_map.keys())])
+    ws_info.append(["Total Constants", len(constants)])
+    ws_info.append(["Generated By", "consync"])
+    ws_info.column_dimensions["A"].width = 16
+    ws_info.column_dimensions["B"].width = 50
+
+    wb.save(filepath)
+
+
+def _write_table_sheet(ws, constants: list, mapping: MappingConfig):
+    """Write one variant's constants as a table in a worksheet."""
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+    from collections import OrderedDict
+    from typing import Any
+
+    # Group constants by row_label, preserving order
+    rows: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    fields_ordered: list[str] = []
+
+    for c in constants:
+        row_label = c.metadata["row_label"]
+        field_name = c.metadata["field"]
+        if row_label not in rows:
+            rows[row_label] = {}
+        rows[row_label][field_name] = c
+        if field_name not in fields_ordered:
+            fields_ordered.append(field_name)
+
+    # --- Styling ---
+    header_fill = PatternFill("solid", fgColor="1F4E79")
+    header_font = Font(bold=True, color="FFFFFF", size=10)
+    label_font = Font(bold=True, size=10)
+    value_font = Font(name="Courier New", size=10)
+    thin = Side(style="thin", color="B0B0B0")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    even_fill = PatternFill("solid", fgColor="D6E4F0")
+    odd_fill = PatternFill("solid", fgColor="FFFFFF")
+    expr_font = Font(name="Courier New", size=9, italic=True, color="666666")
+
+    # --- Header row ---
+    ws.cell(row=1, column=1, value="Motor Variant")
+    for col_idx, field_name in enumerate(fields_ordered, 2):
+        ws.cell(row=1, column=col_idx, value=field_name)
+
+    # Style header
+    for col in range(1, len(fields_ordered) + 2):
+        cell = ws.cell(row=1, column=col)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = border
+
+    # --- Data rows ---
+    for row_idx, (row_label, field_map) in enumerate(rows.items(), 2):
+        # Motor variant name in column 1
+        ws.cell(row=row_idx, column=1, value=row_label)
+        ws.cell(row=row_idx, column=1).font = label_font
+        ws.cell(row=row_idx, column=1).border = border
+        fill = even_fill if row_idx % 2 == 0 else odd_fill
+        ws.cell(row=row_idx, column=1).fill = fill
+
+        for col_idx, field_name in enumerate(fields_ordered, 2):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = border
+            cell.fill = fill
+            cell.alignment = Alignment(horizontal="right")
+
+            c = field_map.get(field_name)
+            if c is None:
+                cell.value = ""
+                continue
+
+            is_expr = c.metadata.get("is_expression", False)
+            if is_expr:
+                # Show expression/macro as-is (string)
+                cell.value = c.value
+                cell.font = expr_font
+                cell.alignment = Alignment(horizontal="center")
+            elif isinstance(c.value, float):
+                cell.value = c.value
+                cell.font = value_font
+                # Use scientific notation for very small/large numbers
+                if abs(c.value) < 0.001 or abs(c.value) >= 100000:
+                    cell.number_format = "0.000E+00"
+                else:
+                    cell.number_format = "0.######"
+            elif isinstance(c.value, int):
+                cell.value = c.value
+                cell.font = value_font
+                cell.number_format = "0"
+            else:
+                cell.value = str(c.value)
+                cell.font = value_font
+
+    # --- Column widths ---
+    ws.column_dimensions["A"].width = 18  # Motor Variant
+    for col_idx in range(2, len(fields_ordered) + 2):
+        col_letter = get_column_letter(col_idx)
+        field_name = fields_ordered[col_idx - 2]
+        # Width based on field name length, min 10
+        ws.column_dimensions[col_letter].width = max(len(field_name) + 3, 10)
+
+    # Freeze first row + first column
+    ws.freeze_panes = "B2"
+
+
+def _write_xlsx_flat(constants: list, filepath: Path, mapping: MappingConfig):
+    """Write constants in flat Name/Value/Unit/Description layout (original behavior)."""
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 

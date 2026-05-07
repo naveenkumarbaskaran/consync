@@ -36,4 +36,4 @@ def list_parsers() -> list[str]:
 
 
 # Import all parser modules to trigger registration
-from consync.parsers import xlsx, csv_parser, json_parser, toml_parser, c_header  # noqa: E402, F401
+from consync.parsers import xlsx, csv_parser, json_parser, toml_parser, c_header, c_struct_table  # noqa: E402, F401

@@ -116,6 +116,8 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
         output_style=raw.get("output_style", "const"),
         static_const=raw.get("static_const", False),
         typed_ints=raw.get("typed_ints", True),
+        parser_options=raw.get("parser_options", {}),
+        renderer_options=raw.get("renderer_options", {}),
         validators=raw.get("validators", {}),
     )
 

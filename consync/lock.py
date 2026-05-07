@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import platform
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -63,7 +64,7 @@ class SyncLock:
         lock_info = {
             "pid": os.getpid(),
             "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            "hostname": os.uname().nodename,
+            "hostname": platform.node(),
         }
         self.lock_path.write_text(json.dumps(lock_info, indent=2))
         self._acquired = True
