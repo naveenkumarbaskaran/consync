@@ -66,7 +66,7 @@ class SyncLock:
             "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "hostname": platform.node(),
         }
-        self.lock_path.write_text(json.dumps(lock_info, indent=2))
+        self.lock_path.write_text(json.dumps(lock_info, indent=2), encoding="utf-8")
         self._acquired = True
         logger.debug("Lock acquired: %s", self.lock_path)
 
@@ -80,7 +80,7 @@ class SyncLock:
     def _read_lock(self) -> dict | None:
         """Read lock file contents."""
         try:
-            return json.loads(self.lock_path.read_text())
+            return json.loads(self.lock_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return None
 

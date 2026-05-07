@@ -46,7 +46,7 @@ def init(path: str):
         click.echo(f"⚠️  {target} already exists. Delete it first to regenerate.")
         sys.exit(1)
 
-    target.write_text(generate_default_config())
+    target.write_text(generate_default_config(), encoding="utf-8")
     click.echo(f"✅ Created {target}")
     click.echo("   Edit it to configure your source ↔ target mappings.")
     click.echo("   Then run: consync sync")
@@ -329,13 +329,13 @@ def diff_cmd(config_path: str | None, from_side: str | None, color: bool):
 
         try:
             _render_file(constants, tmp_path, mapping.target_format if direction == "source" else mapping.source_format, mapping)
-            new_content = tmp_path.read_text().splitlines(keepends=True)
+            new_content = tmp_path.read_text(encoding="utf-8").splitlines(keepends=True)
         finally:
             tmp_path.unlink(missing_ok=True)
 
         # Get current content
         if dest_path.exists():
-            old_content = dest_path.read_text().splitlines(keepends=True)
+            old_content = dest_path.read_text(encoding="utf-8").splitlines(keepends=True)
         else:
             old_content = []
 

@@ -43,14 +43,14 @@ class SyncState:
     def _load(self):
         if self.state_file.exists():
             try:
-                self._data = json.loads(self.state_file.read_text())
+                self._data = json.loads(self.state_file.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 self._data = {}
         else:
             self._data = {}
 
     def _save(self):
-        self.state_file.write_text(json.dumps(self._data, indent=2) + "\n")
+        self.state_file.write_text(json.dumps(self._data, indent=2) + "\n", encoding="utf-8")
 
     def get_hash(self, mapping_key: str, side: str) -> str | None:
         """Get the stored hash for a mapping side ('source' or 'target')."""

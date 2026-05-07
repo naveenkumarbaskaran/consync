@@ -49,7 +49,7 @@ def install_git_hook(hook_type: str = "pre-commit"):
 
     # Check for existing hook
     if hook_file.exists():
-        existing = hook_file.read_text()
+        existing = hook_file.read_text(encoding="utf-8")
         if "consync" in existing:
             click.echo(f"✔️  consync hook already installed in .git/hooks/{hook_type}")
             return
@@ -61,7 +61,7 @@ def install_git_hook(hook_type: str = "pre-commit"):
             f.write(HOOK_TEMPLATE.format(hook_type=hook_type, git_cmd=git_cmd))
     else:
         # Create new hook
-        hook_file.write_text(HOOK_TEMPLATE.format(hook_type=hook_type, git_cmd=git_cmd))
+        hook_file.write_text(HOOK_TEMPLATE.format(hook_type=hook_type, git_cmd=git_cmd), encoding="utf-8")
 
     hook_file.chmod(0o755)
     click.echo(f"✅ Installed consync check in .git/hooks/{hook_type}")
