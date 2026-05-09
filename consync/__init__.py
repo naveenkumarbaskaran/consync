@@ -1,6 +1,6 @@
 """consync — Bidirectional sync between spreadsheets and source code constants."""
 
-__version__ = "2.1.0"
+__version__ = "2.3.0"
 
 from consync.models import Constant, SyncDirection
 from consync.config import load_config

@@ -6,6 +6,11 @@ No `brew install` required — pure Python.
 Event handling:
   - Changes during debounce are QUEUED, not dropped
   - After debounce expires, all queued events are coalesced into one sync
+  - Write suppression prevents ping-pong loops (sync-written files are
+    ignored for a short window so they don't re-trigger sync)
+  - Direction is NEVER forced — the state engine auto-detects which side
+    changed using stored hashes, which correctly returns "already in sync"
+    for files that were just written by the sync itself
   - Lock conflicts trigger automatic retry after a short delay
   - Errors are logged but the watcher continues (resilient)
   - On startup, a full sync is run to recover from any drift
@@ -28,6 +33,10 @@ logger = logging.getLogger(__name__)
 # Max retries when lock is held by another process
 LOCK_RETRY_ATTEMPTS = 3
 LOCK_RETRY_DELAY = 2.0  # seconds between retries
+
+# Write suppression: ignore events on files we just wrote for this duration (seconds).
+# Must be longer than filesystem event propagation but shorter than user interaction.
+WRITE_SUPPRESSION_WINDOW = 2.0
 
 
 def start_watcher(
@@ -84,9 +93,13 @@ def start_watcher(
         click.echo(f"[startup] ⚠️  Startup sync failed: {e} — continuing in watch mode.\n")
 
     # ── Event queue (thread-safe) — changes are QUEUED, never dropped ──
-    pending_changes: dict[Path, str] = {}  # path → forced direction
+    pending_changes: dict[Path, str] = {}  # path → info about what changed
     pending_lock = threading.Lock()
     last_sync_time: float = 0
+
+    # ── Write suppression — tracks files recently written by sync ──
+    recently_written: dict[Path, float] = {}  # path → timestamp of sync write
+    written_lock = threading.Lock()
 
     class SyncHandler(FileSystemEventHandler):
         def on_modified(self, event):
@@ -97,22 +110,22 @@ def start_watcher(
             if changed_path not in watch_files:
                 return
 
-            # Determine direction based on which file changed
-            force = None
-            for m in cfg.mappings:
-                source_resolved = (config_dir / m.source).resolve()
-                target_resolved = (config_dir / m.target).resolve()
-                if changed_path == source_resolved:
-                    force = "source"
-                    break
-                elif changed_path == target_resolved:
-                    force = "target"
-                    break
+            # Write suppression: skip events caused by sync's own writes
+            with written_lock:
+                written_time = recently_written.get(changed_path)
+                if written_time and (time.time() - written_time) < WRITE_SUPPRESSION_WINDOW:
+                    logger.debug(
+                        "Suppressed event for %s (written %.1fs ago by sync)",
+                        changed_path.name,
+                        time.time() - written_time,
+                    )
+                    return
 
-            # Queue the event (never drop)
+            # Queue the event (never drop). Don't force direction — let
+            # the state engine auto-detect using stored hashes.
             with pending_lock:
-                pending_changes[changed_path] = force
-                logger.debug("Queued: %s (direction=%s)", changed_path.name, force)
+                pending_changes[changed_path] = changed_path.name
+                logger.debug("Queued: %s", changed_path.name)
 
     def _process_queue():
         """Process all pending changes in one coalesced sync."""
@@ -125,24 +138,25 @@ def start_watcher(
             queued = dict(pending_changes)
             pending_changes.clear()
 
-        # Determine overall force direction (if all queued point same way)
-        directions = set(queued.values())
-        if len(directions) == 1:
-            force = directions.pop()
-        else:
-            force = None  # mixed — let engine auto-detect
-
         rel_names = [p.name for p in queued.keys()]
         timestamp = time.strftime("%H:%M:%S")
         click.echo(f"[{timestamp}] 📝 {', '.join(rel_names)} changed — syncing...")
 
+        # Never force direction — let the state engine auto-detect which
+        # side changed using stored hashes.  This prevents ping-pong:
+        # after sync writes file B, B's hash matches the stored hash,
+        # so the next cycle correctly detects "already in sync".
+
         # Retry on lock conflict
         for attempt in range(LOCK_RETRY_ATTEMPTS):
             try:
-                reports = sync(config_path=config_path, force_direction=force)
+                reports = sync(config_path=config_path)
                 for r in reports:
                     if r.result in (SyncResult.SYNCED_SOURCE_TO_TARGET, SyncResult.SYNCED_TARGET_TO_SOURCE):
                         click.echo(f"         ✅ {r.message}")
+                        # Register written files for suppression so their
+                        # filesystem events don't re-trigger another sync.
+                        _suppress_written_files(r, config_dir)
                     elif r.result == SyncResult.ALREADY_IN_SYNC:
                         pass  # silent
                     elif r.result == SyncResult.ERROR:
@@ -157,6 +171,27 @@ def start_watcher(
                     click.echo(f"         ❌ Sync failed: {e}")
                     logger.error("Watch sync failed: %s", e)
                     return
+
+    def _suppress_written_files(report, conf_dir):
+        """Mark files written by sync for suppression so their events are ignored."""
+        now = time.time()
+        with written_lock:
+            # Determine which file was written based on sync direction
+            if report.result == SyncResult.SYNCED_SOURCE_TO_TARGET:
+                # source → target: target was written
+                written_path = (conf_dir / report.target).resolve()
+                recently_written[written_path] = now
+            elif report.result == SyncResult.SYNCED_TARGET_TO_SOURCE:
+                # target → source: source was written
+                written_path = (conf_dir / report.source).resolve()
+                recently_written[written_path] = now
+
+        # Prune old entries to prevent memory leak
+        with written_lock:
+            cutoff = now - WRITE_SUPPRESSION_WINDOW * 3
+            stale = [p for p, t in recently_written.items() if t < cutoff]
+            for p in stale:
+                del recently_written[p]
 
     observer = Observer()
     handler = SyncHandler()

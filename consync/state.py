@@ -18,17 +18,45 @@ from pathlib import Path
 from consync.models import Constant
 
 
+def _normalize_value(v):
+    """Normalize a constant value for stable hashing.
+
+    Ensures int/float equivalence: C produces 1.0 (float) for ``1.0F``,
+    but Excel stores it as integer 1.  Without normalization these hash
+    differently, causing perpetual "out of sync" after every round-trip.
+
+    Rules:
+      - int/float that are whole numbers → canonical float (``1.0``)
+      - list values → each element normalized recursively
+      - strings → unchanged
+    """
+    if isinstance(v, list):
+        return [_normalize_value(x) for x in v]
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return float(v)
+    return v
+
+
 def compute_hash(constants: list[Constant]) -> str:
     """Compute a stable hash of constant name+value pairs.
 
     Only hashes names and values (not unit/description) since those
     are the semantically meaningful content for sync detection.
+
+    Uses a sorted list of (name, value) tuples instead of a dict to
+    correctly handle duplicate constant names (e.g., multi-variant
+    struct tables where Motor_X__R_Phase appears once per variant).
+    A dict would silently discard all but the last duplicate, making
+    edits to earlier variants invisible to change detection.
+
+    Numeric values are normalized to float so that ``int 1`` and
+    ``float 1.0`` hash identically — this is critical for xlsx
+    round-trips where Excel drops the ``.0`` from whole numbers.
     """
-    key = json.dumps(
-        {c.name: c.value for c in constants},
-        sort_keys=True,
-        default=str,
+    pairs = sorted(
+        (c.name, _normalize_value(c.value)) for c in constants
     )
+    key = json.dumps(pairs, default=str)
     return hashlib.md5(key.encode()).hexdigest()
 
 

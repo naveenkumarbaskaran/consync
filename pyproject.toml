@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "consync"
-version = "2.2.3"
+version = "2.3.0"
 description = "Bidirectional sync between spreadsheets and source code constants — with full decimal precision."
 readme = "README.md"
 license = {text = "MIT"}
