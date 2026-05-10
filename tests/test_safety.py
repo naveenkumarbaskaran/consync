@@ -414,6 +414,7 @@ mappings:
   - source: data.csv
     target: out.h
     direction: source_to_target
+    protect_target: false
 """)
         source = tmp_path / "data.csv"
         source.write_text(source_content)
@@ -470,6 +471,7 @@ mappings:
   - source: data.csv
     target: out.h
     direction: source_to_target
+    protect_target: false
     validators:
       X:
         min: 0
@@ -494,6 +496,7 @@ mappings:
   - source: data.csv
     target: out.h
     direction: source_to_target
+    protect_target: false
     validators:
       X:
         min: 0
@@ -506,3 +509,144 @@ mappings:
         reports = sync(config_path=str(config))
 
         assert reports[0].result == SyncResult.SYNCED_SOURCE_TO_TARGET
+
+
+# ============================================================
+# protect_target Tests
+# ============================================================
+
+class TestProtectTarget:
+    """Tests for the protect_target option that makes destination files read-only."""
+
+    def test_config_requires_protect_target_for_s2t(self, tmp_path):
+        """Config loader rejects source_to_target without protect_target."""
+        from consync.config import load_config
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: source_to_target
+""")
+        (tmp_path / "data.csv").write_text("Name,Value\nX,1\n")
+
+        with pytest.raises(ValueError, match="protect_target.*required"):
+            load_config(config)
+
+    def test_config_requires_protect_target_for_t2s(self, tmp_path):
+        """Config loader rejects target_to_source without protect_target."""
+        from consync.config import load_config
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: target_to_source
+    protect_target: false
+""")
+        # This should load fine (protect_target is set)
+        cfg = load_config(config)
+        assert cfg.mappings[0].protect_target is False
+
+    def test_config_optional_for_both_direction(self, tmp_path):
+        """Config loader does NOT require protect_target when direction is 'both'."""
+        from consync.config import load_config
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: both
+""")
+        # Should load without error
+        cfg = load_config(config)
+        assert cfg.mappings[0].protect_target is False
+
+    def test_protect_target_true_makes_file_readonly(self, tmp_path):
+        """When protect_target is True, target file is set read-only after sync."""
+        import stat
+        from consync.sync import sync, SyncResult
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: source_to_target
+    protect_target: true
+""")
+        source = tmp_path / "data.csv"
+        source.write_text("Name,Value\nX,42\n")
+
+        os.chdir(tmp_path)
+        reports = sync(config_path=str(config))
+        assert reports[0].result == SyncResult.SYNCED_SOURCE_TO_TARGET
+
+        target = tmp_path / "out.h"
+        assert target.exists()
+        mode = target.stat().st_mode
+        assert not (mode & stat.S_IWUSR), "Target should be read-only (no owner write bit)"
+        assert not (mode & stat.S_IWGRP), "Target should be read-only (no group write bit)"
+        assert not (mode & stat.S_IWOTH), "Target should be read-only (no other write bit)"
+
+    def test_protect_target_false_leaves_file_writable(self, tmp_path):
+        """When protect_target is False, target file stays writable."""
+        import stat
+        from consync.sync import sync, SyncResult
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: source_to_target
+    protect_target: false
+""")
+        source = tmp_path / "data.csv"
+        source.write_text("Name,Value\nX,42\n")
+
+        os.chdir(tmp_path)
+        reports = sync(config_path=str(config))
+        assert reports[0].result == SyncResult.SYNCED_SOURCE_TO_TARGET
+
+        target = tmp_path / "out.h"
+        mode = target.stat().st_mode
+        assert mode & stat.S_IWUSR, "Target should remain writable"
+
+    def test_protect_target_resync_works(self, tmp_path):
+        """Protected (read-only) file can still be updated by subsequent sync."""
+        import stat
+        from consync.sync import sync, SyncResult
+
+        config = tmp_path / ".consync.yaml"
+        config.write_text("""\
+mappings:
+  - source: data.csv
+    target: out.h
+    direction: source_to_target
+    protect_target: true
+""")
+        source = tmp_path / "data.csv"
+        source.write_text("Name,Value\nX,42\n")
+
+        os.chdir(tmp_path)
+        sync(config_path=str(config))
+        target = tmp_path / "out.h"
+        assert not (target.stat().st_mode & stat.S_IWUSR)
+
+        content_v1 = target.read_text()
+
+        # Update source and sync again — should work despite file being read-only
+        source.write_text("Name,Value\nX,99\n")
+        reports = sync(config_path=str(config))
+        assert reports[0].result == SyncResult.SYNCED_SOURCE_TO_TARGET
+
+        content_v2 = target.read_text()
+        assert content_v2 != content_v1
+        assert "99" in content_v2
+
+        # File should be read-only again
+        assert not (target.stat().st_mode & stat.S_IWUSR)

@@ -140,6 +140,18 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
         if key not in parser_options and key in raw:
             parser_options[key] = raw[key]
 
+    # protect_target is mandatory when direction is not 'both'
+    protect_target_raw = raw.get("protect_target")
+    if direction != SyncDirection.BOTH:
+        if protect_target_raw is None:
+            raise ValueError(
+                f"Mapping '{source}' → '{target}': 'protect_target' is required "
+                f"when direction is '{raw.get('direction', 'source_to_target')}' (not 'both'). "
+                f"Set protect_target: true to make the destination file read-only after sync, "
+                f"or protect_target: false to allow manual edits."
+            )
+    protect_target = bool(protect_target_raw) if protect_target_raw is not None else False
+
     return MappingConfig(
         source=source,
         target=target,
@@ -155,6 +167,7 @@ def _parse_mapping(raw: dict[str, Any], config_dir: Path) -> MappingConfig:
         output_style=raw.get("output_style", "const"),
         static_const=raw.get("static_const", False),
         typed_ints=raw.get("typed_ints", True),
+        protect_target=protect_target,
         parser_options=parser_options,
         renderer_options=raw.get("renderer_options") or {},
         validators=raw.get("validators") or {},
@@ -241,10 +254,13 @@ mappings:
   # - source: params.csv              # Will be created from your existing code
   #   target: legacy/params.h         # Already exists
   #   direction: target_to_source     # First sync creates the CSV from the .h
+  #   protect_target: true            # REQUIRED when direction is not 'both'
 
     # Optional:
     # prefix: ""                    # Prefix all constant names (e.g., "HW_")
     # uppercase_names: true         # Force UPPER_CASE names in output
+    # protect_target: true          # Make destination file read-only after sync
+    #                               # (mandatory when direction is not 'both')
 
 # Global settings:
 # state_file: .consync.state.json   # Track sync state (gitignore this)

@@ -22,6 +22,7 @@ def project_dir(tmp_path):
           - source: data.csv
             target: out.h
             direction: source_to_target
+            protect_target: false
             precision: 17
             header_guard: TEST_H
     """))
@@ -90,4 +91,4 @@ class TestVersionCommand:
     def test_version(self, runner):
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "2.1.0" in result.output
+        assert "2.3.1" in result.output

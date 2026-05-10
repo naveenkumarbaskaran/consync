@@ -239,6 +239,7 @@ class TestECUEndToEnd:
               - source: ecu_params.csv
                 target: ecu_params.h
                 direction: source_to_target
+                protect_target: false
                 precision: 17
                 header_guard: ECU_PARAMS_H
                 output_style: const

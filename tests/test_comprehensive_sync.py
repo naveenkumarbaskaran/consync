@@ -129,7 +129,8 @@ C_STRUCT_TABLE_VARIANTS = textwrap.dedent("""\
 
 
 def create_config(tmp_path, source_name, target_name, direction="source_to_target",
-                  source_format="", target_format="", parser_options=None):
+                  source_format="", target_format="", parser_options=None,
+                  protect_target=False):
     """Create a .consync.yaml config file."""
     cfg = f"""\
 mappings:
@@ -137,6 +138,9 @@ mappings:
     target: {target_name}
     direction: {direction}
 """
+    # protect_target is mandatory when direction is not 'both'
+    if direction != "both":
+        cfg += f"    protect_target: {'true' if protect_target else 'false'}\n"
     if source_format:
         cfg += f"    source_format: {source_format}\n"
     if target_format:
@@ -403,12 +407,15 @@ class TestOneWaySourceToTarget:
               - source: params.csv
                 target: params.h
                 direction: source_to_target
+                protect_target: false
               - source: params.csv
                 target: params.json
                 direction: source_to_target
+                protect_target: false
               - source: params.csv
                 target: params.py
                 direction: source_to_target
+                protect_target: false
         """)
         config = tmp_path / ".consync.yaml"
         config.write_text(cfg_text)
@@ -1059,6 +1066,7 @@ class TestFormatRendering:
               - source: params.csv
                 target: params.h
                 direction: source_to_target
+                protect_target: false
                 output_style: define
         """)
         config = tmp_path / ".consync.yaml"
@@ -1076,6 +1084,7 @@ class TestFormatRendering:
               - source: params.csv
                 target: params.h
                 direction: source_to_target
+                protect_target: false
                 output_style: const
         """)
         config = tmp_path / ".consync.yaml"
@@ -1093,6 +1102,7 @@ class TestFormatRendering:
               - source: params.csv
                 target: params.v
                 direction: source_to_target
+                protect_target: false
                 module_name: motor_params
         """)
         config = tmp_path / ".consync.yaml"
@@ -1111,6 +1121,7 @@ class TestFormatRendering:
               - source: params.csv
                 target: params.cs
                 direction: source_to_target
+                protect_target: false
                 namespace: Motor.Config
         """)
         config = tmp_path / ".consync.yaml"

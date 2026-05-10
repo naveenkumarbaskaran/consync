@@ -446,6 +446,7 @@ class TestEndToEndArraySync:
             "  - source: params.csv\n"
             "    target: out.h\n"
             "    direction: source_to_target\n"
+            "    protect_target: false\n"
             "    header_guard: PARAMS_H\n"
             "    static_const: true\n"
             "    typed_ints: true\n"

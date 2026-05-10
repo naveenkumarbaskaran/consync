@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import stat
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -169,7 +171,9 @@ def _sync_one(
                     + (f" (+{len(validation.errors)-1} more)" if len(validation.errors) > 1 else ""),
                 )
             backup_file(target_path, backup_dir=config_dir / ".consync" / "backups")
+            _unprotect_before_write(target_path, mapping)
             _render_file(constants, target_path, mapping.target_format, mapping)
+            _protect_after_write(target_path, mapping)
             result = SyncResult.SYNCED_SOURCE_TO_TARGET
             logger.info(
                 "Synced %s → %s (%d constants)",
@@ -187,7 +191,9 @@ def _sync_one(
                     + (f" (+{len(validation.errors)-1} more)" if len(validation.errors) > 1 else ""),
                 )
             backup_file(source_path, backup_dir=config_dir / ".consync" / "backups")
+            _unprotect_before_write(source_path, mapping)
             _render_file(constants, source_path, mapping.source_format, mapping)
+            _protect_after_write(source_path, mapping)
             result = SyncResult.SYNCED_TARGET_TO_SOURCE
             logger.info(
                 "Synced %s → %s (%d constants)",
@@ -387,6 +393,37 @@ def _render_file(constants: list, filepath: Path, format_name: str, mapping: Map
 
     renderer = get_renderer(format_name)
     renderer(constants, filepath, config=mapping)
+
+
+def _unprotect_before_write(filepath: Path, mapping: MappingConfig) -> None:
+    """Temporarily make a protected file writable before consync writes to it.
+
+    Only acts if protect_target is enabled and the file exists and is read-only.
+    """
+    if not mapping.protect_target:
+        return
+    if not filepath.exists():
+        return
+    current = filepath.stat().st_mode
+    if not (current & stat.S_IWUSR):
+        filepath.chmod(current | stat.S_IWUSR)
+        logger.debug("Temporarily made %s writable for sync.", filepath.name)
+
+
+def _protect_after_write(filepath: Path, mapping: MappingConfig) -> None:
+    """Make the destination file read-only after sync writes it.
+
+    Removes the owner write bit so the user cannot accidentally edit the
+    file that is managed by consync.  Only acts when protect_target is True.
+    """
+    if not mapping.protect_target:
+        return
+    if not filepath.exists():
+        return
+    current = filepath.stat().st_mode
+    readonly = current & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+    filepath.chmod(readonly)
+    logger.info("Protected %s (read-only). Use 'consync sync' to update.", filepath.name)
 
 
 def _validate_if_needed(constants: list, mapping: MappingConfig):

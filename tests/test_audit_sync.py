@@ -495,6 +495,7 @@ static const MotorParam_t params[3] = {
                 target: motor_params.xlsx
                 format: c_struct_table
                 direction: target_to_source
+                protect_target: false
                 parser_options:
                   variant: all
         """))
@@ -508,6 +509,7 @@ static const MotorParam_t params[3] = {
                 target: motor_params.xlsx
                 format: c_struct_table
                 direction: source_to_target
+                protect_target: false
                 parser_options:
                   variant: all
         """))
@@ -526,6 +528,7 @@ static const MotorParam_t params[3] = {
                 target: motor_params.xlsx
                 format: c_struct_table
                 direction: target_to_source
+                protect_target: false
                 parser_options:
                   variant: all
         """))
@@ -567,6 +570,7 @@ static const Param_t tbl[2] = {
                 target: p.xlsx
                 format: c_struct_table
                 direction: source_to_target
+                protect_target: false
         """))
         # First sync to create xlsx
         sync(config_path=config)
