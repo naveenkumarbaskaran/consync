@@ -1,10 +1,11 @@
-"""Tests for c_struct_table parser — generic C struct array initializer parsing."""
+"""Tests for c_struct_table parser and renderer — generic C struct array initializer."""
 
 import textwrap
 from pathlib import Path
 
 import pytest
 
+from consync.renderers.c_struct_table import _format_numeric
 from consync.parsers.c_struct_table import (
     parse_c_struct_table,
     _auto_detect_table_var,
@@ -472,3 +473,121 @@ class TestParseCStructTable:
         # Special chars in label → underscore, fields from header comment
         assert result[0].name == "Motor_A_B_v2__alpha"
         assert result[1].name == "Motor_A_B_v2__beta"
+
+
+# ============================================================
+# _format_numeric — renderer numeric formatting
+# ============================================================
+
+class TestFormatNumeric:
+    """Tests for _format_numeric() in the c_struct_table renderer.
+
+    Covers all C literal format variations found in automotive embedded code:
+    scientific notation exponent preservation, case preservation, mantissa
+    format, precision, hex, unsigned, and regular floats.
+    """
+
+    # --- Issue 1: Exponent preservation (CRITICAL) ---
+
+    def test_scientific_notation_preserves_exponent(self):
+        """Original E-3 exponent must be preserved, not renormalized."""
+        assert _format_numeric(0.205, "195.0E-3F") == "205.0E-3F"
+
+    def test_scientific_notation_same_value(self):
+        assert _format_numeric(0.195, "195.0E-3F") == "195.0E-3F"
+
+    def test_scientific_notation_higher_precision(self):
+        assert _format_numeric(0.0315, "30.13E-3F") == "31.50E-3F"
+
+    def test_scientific_notation_micro_scale(self):
+        assert _format_numeric(0.00002521, "24.21E-6F") == "25.21E-6F"
+
+    def test_scientific_notation_micro_scale_same(self):
+        assert _format_numeric(0.00002421, "24.21E-6F") == "24.21E-6F"
+
+    def test_scientific_notation_negative_value(self):
+        assert _format_numeric(-0.0001242, "-1.242E-4F") == "-1.242E-4F"
+
+    def test_scientific_notation_negative_different_exp(self):
+        assert _format_numeric(-0.0000101, "-1.01E-5F") == "-1.01E-5F"
+
+    def test_scientific_notation_positive_exponent(self):
+        assert _format_numeric(1000.0, "1.0E3F") == "1.0E3F"
+
+    def test_scientific_notation_positive_exponent_changed(self):
+        assert _format_numeric(2000.0, "1.0E3F") == "2.0E3F"
+
+    def test_scientific_notation_milli_scale(self):
+        assert _format_numeric(0.052, "42.0E-3F") == "52.0E-3F"
+
+    # --- Issue 2: Lowercase 'e' preservation ---
+
+    def test_lowercase_e_preserved_same_value(self):
+        assert _format_numeric(0.0726, "72.6e-3F") == "72.6e-3F"
+
+    def test_lowercase_e_preserved_new_value(self):
+        assert _format_numeric(0.0831, "72.6e-3F") == "83.1e-3F"
+
+    # --- Issue 3: No decimal point in mantissa ---
+
+    def test_no_decimal_mantissa_same(self):
+        assert _format_numeric(0.01, "1E-2F") == "1E-2F"
+
+    def test_no_decimal_mantissa_4e3(self):
+        assert _format_numeric(0.004, "4E-3F") == "4E-3F"
+
+    def test_no_decimal_mantissa_6e3(self):
+        assert _format_numeric(0.006, "6E-3F") == "6E-3F"
+
+    def test_no_decimal_mantissa_changed(self):
+        assert _format_numeric(0.02, "1E-2F") == "2E-2F"
+
+    # --- Issue 4: High precision + exponent digit preservation ---
+
+    def test_high_precision_same(self):
+        assert _format_numeric(0.002457019940, "2.457019940E-03F") == "2.457019940E-03F"
+
+    def test_high_precision_changed(self):
+        assert _format_numeric(0.002557019940, "2.457019940E-03F") == "2.557019940E-03F"
+
+    # --- Working cases: integers ---
+
+    def test_unsigned_int_same(self):
+        assert _format_numeric(5, "5u") == "5u"
+
+    def test_unsigned_int_changed(self):
+        assert _format_numeric(7, "5u") == "7u"
+
+    def test_hex_literal_same(self):
+        assert _format_numeric(255, "0xFF") == "0xFF"
+
+    def test_hex_literal_changed(self):
+        assert _format_numeric(16, "0xFF") == "0x10"
+
+    # --- Working cases: regular floats ---
+
+    def test_regular_float_same(self):
+        assert _format_numeric(121.0, "121.0F") == "121.0F"
+
+    def test_regular_float_changed(self):
+        assert _format_numeric(125.5, "121.0F") == "125.5F"
+
+    def test_small_float_no_sci(self):
+        assert _format_numeric(0.0055, "0.0055F") == "0.0055F"
+
+    def test_float_three_decimals(self):
+        assert _format_numeric(0.087, "0.087F") == "0.087F"
+
+    def test_zero_regular(self):
+        assert _format_numeric(0.0, "0.0F") == "0.0F"
+
+    def test_zero_scientific(self):
+        assert _format_numeric(0.0, "0.0E-3F") == "0.0E-3F"
+
+    def test_no_original_raw(self):
+        """When no original is provided, just format the value."""
+        result = _format_numeric(3.14)
+        assert result == "3.14F"
+
+    def test_int_no_original(self):
+        assert _format_numeric(42) == "42"

@@ -41,7 +41,12 @@ def _sanitize_label(label: str) -> str:
 def _format_numeric(value: float | int, original_raw: str = "") -> str:
     """Format a numeric value back to C literal, preserving style of original.
 
-    Tries to maintain scientific notation, F suffix, etc. from the original.
+    Preserves:
+      1. Original exponent for scientific notation (E-3 stays E-3)
+      2. Lowercase/uppercase 'e'/'E'
+      3. Mantissa format (with/without decimal point)
+      4. Precision (number of decimal digits)
+      5. Exponent digit count (E-03 vs E-3)
     """
     if isinstance(value, int):
         if original_raw and original_raw.strip().startswith(("0x", "0X")):
@@ -55,42 +60,88 @@ def _format_numeric(value: float | int, original_raw: str = "") -> str:
         return f"{value}{suffix}"
 
     # Float value
-    suffix = "F"
+    suffix = "F"  # default
     if original_raw:
-        stripped = original_raw.strip().rstrip("fFlL")
-        if original_raw.strip().endswith("f") or original_raw.strip().endswith("F"):
-            suffix = original_raw.strip()[-1]
+        stripped = original_raw.strip()
+        if stripped.endswith("f"):
+            suffix = "f"
+        elif stripped.endswith("F"):
+            suffix = "F"
+        elif stripped.endswith("L") or stripped.endswith("l"):
+            suffix = stripped[-1]
         else:
             suffix = ""
 
     # Check if original used scientific notation
-    if original_raw and ("e" in original_raw.lower() or "E" in original_raw):
-        # Format in scientific notation
-        # Detect the exponent style from original
-        formatted = f"{value:E}"
-        # Simplify: use same number of significant digits as original
-        orig_stripped = original_raw.strip().rstrip("fFlL")
-        if "." in orig_stripped:
-            # Count digits after decimal before E
-            parts = orig_stripped.upper().split("E")
-            if "." in parts[0]:
-                decimal_digits = len(parts[0].split(".")[1])
-            else:
-                decimal_digits = 2
-        else:
-            decimal_digits = 2
+    if original_raw and ("e" in original_raw or "E" in original_raw):
+        # Determine case of exponent character
+        use_lowercase = "e" in original_raw and "E" not in original_raw
+        exp_char = "e" if use_lowercase else "E"
 
-        formatted = f"{value:.{decimal_digits}E}"
-        return f"{formatted}{suffix}"
+        # Extract original exponent value
+        orig_no_suffix = original_raw.strip().rstrip("fFlLuU")
+        exp_match = re.search(r"[eE]([+-]?\d+)", orig_no_suffix)
+        if exp_match:
+            orig_exponent = int(exp_match.group(1))
+
+            # Handle negative values
+            sign = ""
+            abs_value = value
+            if value < 0:
+                sign = "-"
+                abs_value = abs(value)
+
+            # Calculate new mantissa preserving the original exponent
+            # value = mantissa * 10^exponent  =>  mantissa = value / 10^exponent
+            if abs_value == 0:
+                new_mantissa = 0.0
+            else:
+                new_mantissa = abs_value / (10 ** orig_exponent)
+
+            # Determine mantissa format from original
+            mantissa_part = orig_no_suffix.split("e")[0].split("E")[0]
+            mantissa_part = mantissa_part.lstrip("+-")
+
+            if "." in mantissa_part:
+                decimal_digits = len(mantissa_part.split(".")[1])
+                mantissa_str = f"{new_mantissa:.{decimal_digits}f}"
+            else:
+                # No decimal in original (like "1E-2")
+                mantissa_str = f"{int(round(new_mantissa))}"
+
+            # Preserve exponent format (E-03 vs E-3, leading zeros)
+            exp_match_full = re.search(r"[eE]([+-]?)(\d+)", orig_no_suffix)
+            if exp_match_full:
+                exp_sign_char = exp_match_full.group(1)
+                exp_digit_count = len(exp_match_full.group(2))
+                if orig_exponent < 0:
+                    exp_sign_str = "-"
+                elif exp_sign_char == "+":
+                    exp_sign_str = "+"
+                else:
+                    exp_sign_str = ""
+                exp_abs = abs(orig_exponent)
+                exp_str = f"{exp_sign_str}{exp_abs:0{exp_digit_count}d}"
+            else:
+                exp_str = f"{orig_exponent:+d}"
+
+            formatted = f"{sign}{mantissa_str}{exp_char}{exp_str}"
+            return f"{formatted}{suffix}"
+        else:
+            # Fallback (shouldn't happen if we got here)
+            formatted = f"{value:E}"
+            return f"{formatted}{suffix}"
     else:
-        # Regular float notation
+        # Regular float notation (no scientific notation in original)
         if original_raw:
             orig_stripped = original_raw.strip().rstrip("fFlL")
             if "." in orig_stripped:
                 decimal_digits = len(orig_stripped.split(".")[1])
                 formatted = f"{value:.{decimal_digits}f}"
             else:
-                formatted = str(value)
+                formatted = (
+                    str(int(round(value))) if value == int(value) else str(value)
+                )
         else:
             formatted = str(value)
         return f"{formatted}{suffix}"
